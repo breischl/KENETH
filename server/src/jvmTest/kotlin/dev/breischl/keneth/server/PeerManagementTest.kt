@@ -9,6 +9,7 @@ import dev.breischl.keneth.core.values.Current
 import dev.breischl.keneth.core.values.Voltage
 import dev.breischl.keneth.transport.FrameTransport
 import dev.breischl.keneth.transport.MessageTransport
+import dev.breischl.keneth.transport.tcp.RawTcpClientTransport
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -303,7 +304,11 @@ class PeerManagementTest {
         val port = remoteServer.localPort
 
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener).tracked()
+        val server = EpServer(
+            serverIdentity,
+            listener,
+            outboundTransportFactory = { host, port -> MessageTransport(RawTcpClientTransport(host, port)) },
+        ).tracked()
 
         server.addPeer(
             PeerConfig(

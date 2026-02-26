@@ -78,6 +78,7 @@ class EpNode(
         scope.cancel()
         tcpAcceptor?.close()
         tcpAcceptor = null
+        _localPort = null
         server.close()
     }
 
