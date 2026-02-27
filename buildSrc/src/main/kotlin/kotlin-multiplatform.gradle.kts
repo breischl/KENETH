@@ -33,4 +33,6 @@ kotlin {
     js(IR) {
         nodejs()
     }
+
+    linuxArm64()
 }
