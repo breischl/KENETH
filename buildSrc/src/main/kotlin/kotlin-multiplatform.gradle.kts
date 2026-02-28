@@ -32,6 +32,13 @@ kotlin {
 
     js(IR) {
         nodejs()
+        browser {
+            testTask {
+                useKarma {
+                    useChromeHeadless()
+                }
+            }
+        }
     }
 
     linuxArm64()
