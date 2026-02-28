@@ -2,6 +2,7 @@ package dev.breischl.keneth.core.frames
 
 import dev.breischl.keneth.core.diagnostics.*
 import dev.breischl.keneth.core.parsing.ParseResult
+import kotlinx.io.Source
 import net.orandja.obor.codec.Cbor
 import net.orandja.obor.data.*
 import net.orandja.obor.io.ByteReader
@@ -96,6 +97,23 @@ object FrameCodec {
                     )
                 )
             )
+    }
+
+    /**
+     * Reads and decodes a single frame from a [Source].
+     *
+     * Returns null on clean EOF (source exhausted), or a [ParseResult] for success or failure.
+     *
+     * @param source The source to read from.
+     * @param maxBytes Maximum number of bytes to read for a single frame.
+     * @return A ParseResult on success or failure, or null on clean EOF.
+     */
+    fun decodeFromSource(
+        source: Source,
+        maxBytes: Long = SourceByteReader.DEFAULT_MAX_BYTES,
+    ): ParseResult<Frame>? {
+        if (source.exhausted()) return null
+        return decodeFromReader(SourceByteReader(source, maxBytes), DiagnosticContext.get())
     }
 
     /**

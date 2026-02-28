@@ -9,6 +9,7 @@ kotlin {
             implementation(libs.kotlinxDatetime)
             implementation(libs.obor)
             implementation(libs.kotlinxSerializationCore)
+            implementation(libs.kotlinxIo)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

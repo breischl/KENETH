@@ -2,13 +2,14 @@ package dev.breischl.keneth.transport
 
 import dev.breischl.keneth.core.frames.Frame
 import dev.breischl.keneth.core.frames.FrameCodec
-import dev.breischl.keneth.core.frames.decodeFromStream
 import dev.breischl.keneth.core.parsing.ParseResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import kotlinx.io.asSource
+import kotlinx.io.buffered
 import java.io.IOException
 import java.net.Socket
 
@@ -43,11 +44,11 @@ abstract class SocketTransport : FrameTransport {
 
     override fun receive(): Flow<ParseResult<Frame>> = flow {
         val socket = socket()
-        val inputStream = socket.getInputStream()
+        val source = socket.getInputStream().asSource().buffered()
 
         try {
             while (!socket.isClosed) {
-                val result = FrameCodec.decodeFromStream(inputStream) ?: break
+                val result = FrameCodec.decodeFromSource(source) ?: break
                 listener.safeNotify { onFrameReceived(result) }
                 emit(result)
             }

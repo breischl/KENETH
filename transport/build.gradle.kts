@@ -10,6 +10,7 @@ kotlin {
             implementation(libs.kotlinxCoroutines)
             implementation(libs.kotlinxSerializationCore)
             implementation(libs.obor)
+            implementation(libs.kotlinxIo)
         }
         val jvmTest by getting {
             dependencies {
