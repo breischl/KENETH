@@ -7,7 +7,6 @@ import dev.breischl.keneth.core.messages.SupplyParameters
 import dev.breischl.keneth.core.parsing.ParseResult
 import dev.breischl.keneth.core.values.Current
 import dev.breischl.keneth.core.values.Voltage
-import dev.breischl.keneth.transport.FrameTransport
 import dev.breischl.keneth.transport.MessageTransport
 import dev.breischl.keneth.transport.tcp.RawTcpClientTransport
 import kotlinx.coroutines.*

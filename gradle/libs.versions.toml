@@ -27,4 +27,3 @@ detektGradlePlugin = { module = "dev.detekt:detekt-gradle-plugin", version.ref =
 
 [plugins]
 kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-detekt = { id = "dev.detekt", version.ref = "detekt" }
