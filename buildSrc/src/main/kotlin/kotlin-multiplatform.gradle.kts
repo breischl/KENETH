@@ -23,6 +23,10 @@ tasks.withType<KotlinCompilationTask<*>>().configureEach {
 kotlin {
     jvmToolchain(25)
 
+    // Note: KGP internally adds JVM artifacts to the deprecated `archives` configuration,
+    // causing a "Deprecated Gradle features" warning about Gradle 10 compatibility.
+    // This is a KGP bug tracked at https://youtrack.jetbrains.com/issue/KT-78620.
+    // No workaround is available in project code; upgrade KGP when a fix is released.
     jvm {
         testRuns["test"].executionTask.configure {
             useJUnitPlatform()
