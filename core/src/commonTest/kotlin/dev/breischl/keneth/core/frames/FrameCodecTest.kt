@@ -361,7 +361,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `empty headers produce CborNull, non-empty produce CborMap - property`() = runTest {
+    fun `empty headers produce CborNull and non-empty produce CborMap - property`() = runTest {
         val arbFrame = arbitrary {
             val numHeaders = Arb.int(0..5).bind()
             val headers = (0 until numHeaders).associate {
