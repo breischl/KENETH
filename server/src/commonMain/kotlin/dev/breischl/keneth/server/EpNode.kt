@@ -53,8 +53,8 @@ class EpNode(
     // sessionScope drives all session coroutines.
     private val sessionScope = CoroutineScope(SupervisorJob() + coroutineContext)
 
-    // transferScope is cancelled first in close() so transfer coroutines can run their
-    // finally blocks (including onTransferStopped callbacks) while sessions are still alive.
+    // transferScope is cancelled first in close() so transfer coroutines run their
+    // finally blocks (state update + cleanup) while sessions are still alive.
     private val transferScope = CoroutineScope(SupervisorJob() + coroutineContext)
 
     private val transfers = mutableMapOf<String, EnergyTransfer>()
@@ -171,8 +171,8 @@ class EpNode(
      * Returns a [StartTransferResult] indicating success or the reason for failure.
      *
      * Note: a [StartTransferResult.Success] means the transfer was launched, but the
-     * peer could disconnect between the state check and the first tick. In that case
-     * the transfer stops immediately and [NodeListener.onTransferStopped] fires.
+     * peer could disconnect between the state check and the first tick, in which case
+     * the transfer stops immediately.
      *
      * @param peerId The peer to send parameters to.
      * @param params The parameters to publish.
@@ -215,11 +215,9 @@ class EpNode(
             } finally {
                 transfer._state = TransferState.STOPPED
                 transfers.remove(peerId)
-                listener.safeNotify { onTransferStopped(transfer.snapshot()) }
             }
         }
 
-        listener.safeNotify { onTransferStarted(transfer.snapshot()) }
         return StartTransferResult.Success(transfer)
     }
 

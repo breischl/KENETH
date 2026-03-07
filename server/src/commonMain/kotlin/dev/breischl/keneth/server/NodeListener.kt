@@ -15,8 +15,8 @@ import dev.breischl.keneth.core.messages.SoftDisconnect
  * the session, so it must return promptly. Implementors that need to perform I/O
  * or other slow work must dispatch it to their own coroutine scope.
  *
- * State is passed as immutable snapshots ([SessionSnapshot], [EnergyTransferSnapshot])
- * so that the state captured in a callback cannot become stale after the method returns.
+ * State is passed as immutable [SessionSnapshot]s so that the state captured in a
+ * callback cannot become stale after the method returns.
  */
 interface NodeListener {
 
@@ -54,9 +54,4 @@ interface NodeListener {
     /** A configured peer's session was closed. The peer remains configured but disconnected. */
     fun onPeerDisconnected(session: SessionSnapshot) {}
 
-    /** An energy transfer has been started for a peer. */
-    fun onTransferStarted(transfer: EnergyTransferSnapshot) {}
-
-    /** An energy transfer has been stopped (manually, or due to peer disconnect/error). */
-    fun onTransferStopped(transfer: EnergyTransferSnapshot) {}
 }

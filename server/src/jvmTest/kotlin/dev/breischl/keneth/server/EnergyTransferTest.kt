@@ -57,14 +57,6 @@ class EnergyTransferTest {
             events.add("disconnected:${session.peerId}")
         }
 
-        override fun onTransferStarted(transfer: EnergyTransferSnapshot) {
-            events.add("transfer-started:${transfer.peerId}")
-        }
-
-        override fun onTransferStopped(transfer: EnergyTransferSnapshot) {
-            events.add("transfer-stopped:${transfer.peerId}")
-        }
-
         override fun onSessionError(session: SessionSnapshot, error: Throwable) {
             events.add("error:${error.message}")
         }
@@ -197,7 +189,6 @@ class EnergyTransferTest {
         val countAfter = countSentMessagesByType(fake, SupplyParameters.TYPE_ID)
         assertEquals(countBefore, countAfter, "No new messages should be sent after stop")
         assertEquals(TransferState.STOPPED, transfer.state)
-        assertContains(listener.events, "transfer-stopped:charger-1")
 
         node.close()
     }
@@ -253,7 +244,6 @@ class EnergyTransferTest {
         advanceTimeBy(200) // let the transfer loop detect disconnection
 
         assertEquals(TransferState.STOPPED, transfer.state)
-        assertContains(listener.events, "transfer-stopped:charger-1")
 
         node.close()
     }
@@ -307,23 +297,4 @@ class EnergyTransferTest {
         node.close()
     }
 
-    @Test
-    fun `listener callbacks fire for transfer lifecycle`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val (node, _, listener) = createNodeWithConnectedPeer(dispatcher)
-
-        node.startTransfer("charger-1", TransferParams(supply = SupplyParameters()), tickRate = 100.milliseconds)
-            .requireSuccess()
-        assertContains(listener.events, "transfer-started:charger-1")
-
-        // Let the transfer coroutine start executing
-        advanceTimeBy(1)
-
-        node.stopTransfer("charger-1")
-        testScheduler.advanceUntilIdle() // let cancellation propagate
-
-        assertContains(listener.events, "transfer-stopped:charger-1")
-
-        node.close()
-    }
 }
