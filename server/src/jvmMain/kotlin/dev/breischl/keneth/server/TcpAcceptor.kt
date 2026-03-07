@@ -18,7 +18,7 @@ import java.net.SocketException
  *
  * Example:
  * ```kotlin
- * val node = EpNode(NodeConfig(identity = nodeParams, acceptor = TcpAcceptor(port = 56540)))
+ * val node = EpNode(identity = nodeParams, acceptor = TcpAcceptor(port = 56540))
  * node.start() // acceptor.start(node) is called internally
  * // ... node is now listening for connections
  * node.close() // acceptor.close() is called internally

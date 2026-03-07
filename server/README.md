@@ -15,10 +15,8 @@ import dev.breischl.keneth.server.tcp.TcpAcceptor
 
 // Create and start a node
 val node = EpNode(
-    config = NodeConfig(
-        identity = SessionParameters(identity = "router-1", type = "router"),
-        acceptor = TcpAcceptor(port = 56540),
-    ),
+    identity = SessionParameters(identity = "router-1", type = "router"),
+    acceptor = TcpAcceptor(port = 56540),
     listener = object : NodeListener {
         override fun onPeerConnected(session: SessionSnapshot) {
             println("Peer connected: ${session.peerId}")
@@ -29,7 +27,7 @@ val node = EpNode(
         override fun onMessageReceived(session: SessionSnapshot, message: Message) {
             println("${session.peerId} sent ${message::class.simpleName}")
         }
-    },
+    }
 )
 
 // Configure peers we expect to communicate with
@@ -64,30 +62,22 @@ node.stopTransfer("charger-1")
 node.close()
 ```
 
-## Architecture
-
-```
-EpNode          — Manages sessions, peers, and energy transfers
-  ├─ TcpAcceptor — TCP accept loop (JVM; optional)
-  └─ Transport  — MessageTransport / FrameTransport (from transport module)
-```
-
-### Key Classes
+## Key Classes
 
 | Class                     | Description                                                                        |
 |---------------------------|------------------------------------------------------------------------------------|
 | `EpNode`                  | Main entry point. Accepts connections, enforces EP handshake, dispatches messages. |
-| `NodeConfig`              | Configuration for an `EpNode` (identity, inbound acceptor).                        |
 | `NodeListener`            | Callbacks for session and peer lifecycle events.                                   |
 | `SessionSnapshot`         | Immutable snapshot of a session's state at a point in time.                        |
 | `PeerConfig`              | Configuration for a known peer — `Inbound` or `Outbound`.                          |
 | `Peer`                    | Read-only view of a peer's current connection state.                               |
 | `EnergyTransfer`          | Read-only view of an active/stopped parameter transfer.                            |
 | `TransferParams`          | Supply, demand, and storage parameters to publish.                                 |
+| `InboundAcceptor`         | Interface for accepting inbound connections from other EP nodes                    |
 | `TcpAcceptor`             | Accepts TCP connections and feeds them into an `EpNode` (JVM-only).                |
 | `InMemoryInboundAcceptor` | In-process acceptor for testing without real sockets.                              |
 
-### Session Lifecycle
+## Session Lifecycle
 
 Sessions progress through these states:
 
@@ -101,7 +91,7 @@ AWAITING_SESSION → ACTIVE → DISCONNECTING → CLOSED
 4. Session becomes `ACTIVE` — messages can be exchanged
 5. Either side sends `SoftDisconnect` to begin graceful shutdown
 
-### Peer Management
+## Peer Management
 
 Peers are named endpoints configured before or after the node starts:
 
@@ -114,7 +104,7 @@ Peers are named endpoints configured before or after the node starts:
 Inbound connections are matched to configured peers by comparing the remote device's
 `SessionParameters.identity` against `PeerConfig.expectedIdentity` (defaults to `peerId`).
 
-### Energy Transfers
+## Energy Transfers
 
 `EpNode.startTransfer()` launches a coroutine that publishes parameter messages at a
 configurable tick rate (default 100ms). Each non-null field in `TransferParams` is sent
@@ -144,7 +134,3 @@ Server logic lives in `commonMain`. Platform-specific code provides the TCP acce
 - Certificate-based inbound authorization
 - Auto-reconnect with exponential backoff
 - Ping timeout / dead connection detection
-- Energy balancing / aggregate coordination module
-- Multi-transfer coordination across peers
-- Persistent peer configuration
-- Policy enforcement (device/LEN/remote levels)

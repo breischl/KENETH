@@ -21,8 +21,8 @@ import kotlin.coroutines.EmptyCoroutineContext
  * ```kotlin
  * val acceptor = InMemoryInboundAcceptor()
  *
- * val nodeA = EpNode(NodeConfig(identity = identityA, acceptor = acceptor))
- * val nodeB = EpNode(NodeConfig(identity = identityB))
+ * val nodeA = EpNode(identity = identityA, acceptor = acceptor)
+ * val nodeB = EpNode(identity = identityB)
  *
  * nodeA.addPeer(PeerConfig.Inbound("node-b"))
  * nodeB.addPeer(PeerConfig.Outbound("node-a", connector = acceptor))

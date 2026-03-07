@@ -72,7 +72,7 @@ class EnergyTransferTest {
     ): Triple<EpNode, ChannelFakeFrameTransport, RecordingNodeListener> {
         val listener = RecordingNodeListener()
         val node = EpNode(
-            config = NodeConfig(identity = serverIdentity),
+            identity = serverIdentity,
             listener = listener,
             coroutineContext = testDispatcher,
         )
@@ -253,7 +253,7 @@ class EnergyTransferTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val listener = RecordingNodeListener()
         val node = EpNode(
-            config = NodeConfig(identity = serverIdentity),
+            identity = serverIdentity,
             listener = listener,
             coroutineContext = dispatcher,
         )
@@ -271,7 +271,7 @@ class EnergyTransferTest {
     fun `start transfer on unknown peer returns PeerNotFound`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val node = EpNode(
-            config = NodeConfig(identity = serverIdentity),
+            identity = serverIdentity,
             coroutineContext = dispatcher,
         )
 

@@ -48,7 +48,7 @@ class TcpAcceptorTest {
 
     @Test
     fun `accepted connection completes handshake`() = runBlocking {
-        val node = EpNode(config = NodeConfig(identity = nodeParams)).tracked()
+        val node = EpNode(identity = nodeParams).tracked()
         val acceptor = TcpAcceptor(0).tracked()
         acceptor.start(node)
 
@@ -64,7 +64,7 @@ class TcpAcceptorTest {
 
     @Test
     fun `multiple clients connect independently`() = runBlocking {
-        val node = EpNode(config = NodeConfig(identity = nodeParams)).tracked()
+        val node = EpNode(identity = nodeParams).tracked()
         val acceptor = TcpAcceptor(0).tracked()
         acceptor.start(node)
 
@@ -86,7 +86,7 @@ class TcpAcceptorTest {
     @Test
     fun `close stops accepting new connections`() = runBlocking {
         withTimeout(5.seconds) {
-            val node = EpNode(config = NodeConfig(identity = nodeParams)).tracked()
+            val node = EpNode(identity = nodeParams).tracked()
             val acceptor = TcpAcceptor(0).tracked()
             acceptor.start(node)
             val port = acceptor.localPort!!
@@ -115,7 +115,7 @@ class TcpAcceptorTest {
             }
         }
 
-        val node = EpNode(config = NodeConfig(identity = nodeParams, transportListener = listener)).tracked()
+        val node = EpNode(identity = nodeParams, transportListener = listener).tracked()
         val acceptor = TcpAcceptor(0, listener).tracked()
         acceptor.start(node)
 

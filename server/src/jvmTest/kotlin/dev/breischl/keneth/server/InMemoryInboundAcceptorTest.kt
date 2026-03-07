@@ -31,7 +31,7 @@ class InMemoryInboundAcceptorTest {
         val acceptor = InMemoryInboundAcceptor(dispatcher)
 
         val node = EpNode(
-            config = NodeConfig(identity = identityA),
+            identity = identityA,
             coroutineContext = dispatcher,
         )
 
@@ -51,7 +51,7 @@ class InMemoryInboundAcceptorTest {
     fun `multiple connects are all accepted`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val acceptor = InMemoryInboundAcceptor(dispatcher)
-        val node = EpNode(config = NodeConfig(identity = identityA), coroutineContext = dispatcher)
+        val node = EpNode(identity = identityA, coroutineContext = dispatcher)
 
         acceptor.start(node)
 
@@ -67,7 +67,7 @@ class InMemoryInboundAcceptorTest {
     fun `connect before start — transports are buffered and accepted on start`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val acceptor = InMemoryInboundAcceptor(dispatcher)
-        val node = EpNode(config = NodeConfig(identity = identityA), coroutineContext = dispatcher)
+        val node = EpNode(identity = identityA, coroutineContext = dispatcher)
 
         // connect first, start second
         repeat(2) { acceptor.connect(listener = null) }
@@ -87,14 +87,15 @@ class InMemoryInboundAcceptorTest {
 
         val listenerA = RecordingNodeListener()
         val nodeA = EpNode(
-            config = NodeConfig(identity = identityA, acceptor = acceptor),
+            identity = identityA,
+            acceptor = acceptor,
             listener = listenerA,
             coroutineContext = dispatcher,
         )
 
         val listenerB = RecordingNodeListener()
         val nodeB = EpNode(
-            config = NodeConfig(identity = identityB),
+            identity = identityB,
             listener = listenerB,
             coroutineContext = dispatcher,
         )

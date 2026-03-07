@@ -6,6 +6,7 @@ import dev.breischl.keneth.core.messages.Message
 import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.messages.SoftDisconnect
 import dev.breischl.keneth.transport.MessageTransport
+import dev.breischl.keneth.transport.TransportListener
 import dev.breischl.keneth.transport.safeNotify
 import kotlinx.coroutines.*
 import kotlin.coroutines.CoroutineContext
@@ -25,10 +26,8 @@ import kotlin.uuid.Uuid
  * Example:
  * ```kotlin
  * val node = EpNode(
- *     config = NodeConfig(
- *         identity = SessionParameters(identity = "router-1", type = "router"),
- *         acceptor = TcpAcceptor(port = 56540),
- *     ),
+ *     identity = SessionParameters(identity = "router-1", type = "router"),
+ *     acceptor = TcpAcceptor(port = 56540),
  * )
  * node.addPeer(PeerConfig.Inbound(peerId = "charger-1"))
  * node.start()
@@ -36,12 +35,16 @@ import kotlin.uuid.Uuid
  * node.close()
  * ```
  *
- * @param config Node configuration including identity and optional inbound acceptor.
+ * @param identity The node's identity, sent to each peer during the EP handshake.
+ * @param acceptor Strategy for accepting inbound connections, or null to disable listening.
+ * @param transportListener Optional listener for transport-level events (frame/message I/O).
  * @param listener Optional callback for session and peer lifecycle events.
  * @param coroutineContext Additional coroutine context elements (e.g., a test dispatcher).
  */
 class EpNode(
-    internal val config: NodeConfig,
+    val identity: SessionParameters,
+    val acceptor: InboundAcceptor? = null,
+    val transportListener: TransportListener? = null,
     private val listener: NodeListener? = null,
     private val coroutineContext: CoroutineContext = EmptyCoroutineContext,
 ) : AutoCloseable {
@@ -93,16 +96,16 @@ class EpNode(
     /**
      * Start the node.
      *
-     * If [NodeConfig.acceptor] is set, starts it to begin accepting inbound connections.
+     * If [acceptor] is set, starts it to begin accepting inbound connections.
      */
     fun start() {
-        config.acceptor?.start(this)
+        acceptor?.start(this)
     }
 
     override fun close() {
         // Cancel transfers first so their finally blocks run while sessions are still alive.
         transferScope.cancel()
-        config.acceptor?.close()
+        acceptor?.close()
         _sessions.values.toList().forEach { closeSession(it) }
         sessionScope.cancel()
     }
@@ -251,7 +254,7 @@ class EpNode(
         val peerConfig = peer.config as? PeerConfig.Outbound ?: return
         sessionScope.launch {
             try {
-                val transport = peerConfig.connector.connect(config.transportListener)
+                val transport = peerConfig.connector.connect(transportListener)
                 // Create the session and link the peer BEFORE launching runSession,
                 // so the handshake code can find the peer even with eager dispatchers.
                 val session = DeviceSession(
@@ -264,7 +267,7 @@ class EpNode(
                 _sessions[session.id] = session
                 listener.safeNotify { onSessionCreated(session.snapshot(peerId = peer.peerId)) }
                 // Outbound side initiates the EP handshake by sending our identity first.
-                session.send(config.identity)
+                session.send(identity)
                 runSession(session)
             } catch (e: CancellationException) {
                 throw e
@@ -318,7 +321,7 @@ class EpNode(
         }
         session.sessionParameters = message
         session.state = SessionState.ACTIVE
-        session.send(config.identity)
+        session.send(identity)
         listener.safeNotify { onSessionActive(session.snapshot(peerId = null)) }
 
         // Link inbound sessions to configured peers by identity

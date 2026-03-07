@@ -100,7 +100,7 @@ class PeerManagementTest {
 
     @Test
     fun `addPeer stores peer config`() = runTest {
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, coroutineContext = UnconfinedTestDispatcher())
 
         val config = PeerConfig.Inbound(peerId = "peer-1")
         node.addPeer(config)
@@ -113,7 +113,7 @@ class PeerManagementTest {
 
     @Test
     fun `removePeer removes peer`() = runTest {
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
         assertEquals(1, node.peers.size)
@@ -125,7 +125,7 @@ class PeerManagementTest {
 
     @Test
     fun `addPeer rejects duplicate peerId`() = runTest {
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
 
@@ -138,7 +138,7 @@ class PeerManagementTest {
     @Test
     fun `inbound session matched to peer by identity`() = runTest {
         val listener = RecordingListener()
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(PeerConfig.Inbound(peerId = "peer-1", expectedIdentity = "device-1"))
 
@@ -154,7 +154,7 @@ class PeerManagementTest {
 
     @Test
     fun `inbound peer matched by peerId when expectedIdentity not set`() = runTest {
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, coroutineContext = UnconfinedTestDispatcher())
 
         // peerId matches identity, no explicit expectedIdentity
         node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
@@ -170,7 +170,7 @@ class PeerManagementTest {
     @Test
     fun `inbound session unmatched stays as regular session`() = runTest {
         val listener = RecordingListener()
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(
             PeerConfig.Inbound(
@@ -195,7 +195,7 @@ class PeerManagementTest {
     @Test
     fun `peer disconnected when session closes`() = runTest {
         val listener = RecordingListener()
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
@@ -218,7 +218,7 @@ class PeerManagementTest {
     @Test
     fun `removePeer disconnects active session`() = runTest {
         val listener = RecordingListener()
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
@@ -245,7 +245,7 @@ class PeerManagementTest {
         val port = remoteServer.localPort
 
         val listener = RecordingListener()
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener).tracked()
+        val node = EpNode(identity = serverIdentity, listener = listener).tracked()
 
         node.addPeer(
             PeerConfig.Outbound(
@@ -276,7 +276,7 @@ class PeerManagementTest {
     @Test
     fun `peer listener callbacks fire`() = runTest {
         val listener = RecordingListener()
-        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(identity = serverIdentity, listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
         node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
