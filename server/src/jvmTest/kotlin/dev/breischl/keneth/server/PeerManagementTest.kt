@@ -61,31 +61,31 @@ class PeerManagementTest {
         return fake to MessageTransport(fake)
     }
 
-    private class RecordingListener : ServerListener {
+    private class RecordingListener : NodeListener {
         val events = mutableListOf<String>()
-        val connectedPeers = mutableListOf<PeerSnapshot>()
-        val disconnectedPeers = mutableListOf<PeerSnapshot>()
+        val connectedPeers = mutableListOf<SessionSnapshot>()
+        val disconnectedPeers = mutableListOf<SessionSnapshot>()
 
-        override fun onSessionCreated(session: DeviceSessionSnapshot) {
+        override fun onSessionCreated(session: SessionSnapshot) {
             events.add("sessionCreated")
         }
 
-        override fun onSessionActive(session: DeviceSessionSnapshot) {
+        override fun onSessionActive(session: SessionSnapshot) {
             events.add("sessionActive")
         }
 
-        override fun onSessionClosed(session: DeviceSessionSnapshot) {
+        override fun onSessionClosed(session: SessionSnapshot) {
             events.add("sessionClosed")
         }
 
-        override fun onPeerConnected(peer: PeerSnapshot) {
-            events.add("peerConnected:${peer.peerId}")
-            synchronized(connectedPeers) { connectedPeers.add(peer) }
+        override fun onPeerConnected(session: SessionSnapshot) {
+            events.add("peerConnected:${session.peerId}")
+            synchronized(connectedPeers) { connectedPeers.add(session) }
         }
 
-        override fun onPeerDisconnected(peer: PeerSnapshot) {
-            events.add("peerDisconnected:${peer.peerId}")
-            synchronized(disconnectedPeers) { disconnectedPeers.add(peer) }
+        override fun onPeerDisconnected(session: SessionSnapshot) {
+            events.add("peerDisconnected:${session.peerId}")
+            synchronized(disconnectedPeers) { disconnectedPeers.add(session) }
         }
     }
 
@@ -103,79 +103,79 @@ class PeerManagementTest {
 
     @Test
     fun `addPeer stores peer config`() = runTest {
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
         val config = PeerConfig.Inbound(peerId = "peer-1")
-        server.addPeer(config)
+        node.addPeer(config)
 
-        assertEquals(1, server.peers.size)
-        assertEquals(config, server.peers["peer-1"]?.config)
-        assertEquals(ConnectionState.DISCONNECTED, server.peers["peer-1"]?.connectionState)
-        server.close()
+        assertEquals(1, node.peers.size)
+        assertEquals(config, node.peers["peer-1"]?.config)
+        assertEquals(ConnectionState.DISCONNECTED, node.peers["peer-1"]?.connectionState)
+        node.close()
     }
 
     @Test
     fun `removePeer removes peer`() = runTest {
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
-        assertEquals(1, server.peers.size)
+        node.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
+        assertEquals(1, node.peers.size)
 
-        server.removePeer("peer-1")
-        assertTrue(server.peers.isEmpty())
-        server.close()
+        node.removePeer("peer-1")
+        assertTrue(node.peers.isEmpty())
+        node.close()
     }
 
     @Test
     fun `addPeer rejects duplicate peerId`() = runTest {
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
 
         assertFailsWith<IllegalArgumentException> {
-            server.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
+            node.addPeer(PeerConfig.Inbound(peerId = "peer-1"))
         }
-        server.close()
+        node.close()
     }
 
     @Test
     fun `inbound session matched to peer by identity`() = runTest {
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "peer-1", expectedIdentity = "device-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "peer-1", expectedIdentity = "device-1"))
 
         val (_, transport) = channelTransportWithMessages(deviceIdentity)
-        server.accept(transport)
+        node.accept(transport)
 
-        val peer = server.peers["peer-1"]!!
+        val peer = node.peers["peer-1"]!!
         assertEquals(ConnectionState.CONNECTED, peer.connectionState)
         assertEquals("device-1", peer.remoteIdentity)
         assertContains(listener.events, "peerConnected:peer-1")
-        server.close()
+        node.close()
     }
 
     @Test
     fun `inbound peer matched by peerId when expectedIdentity not set`() = runTest {
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
         // peerId matches identity, no explicit expectedIdentity
-        server.addPeer(PeerConfig.Inbound(peerId = "device-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
         val (_, transport) = channelTransportWithMessages(deviceIdentity)
-        server.accept(transport)
+        node.accept(transport)
 
-        val peer = server.peers["device-1"]!!
+        val peer = node.peers["device-1"]!!
         assertEquals(ConnectionState.CONNECTED, peer.connectionState)
-        server.close()
+        node.close()
     }
 
     @Test
     fun `inbound session unmatched stays as regular session`() = runTest {
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(
+        node.addPeer(
             PeerConfig.Inbound(
                 peerId = "peer-1",
                 expectedIdentity = "other-device"
@@ -183,46 +183,46 @@ class PeerManagementTest {
         )
 
         val (_, transport) = channelTransportWithMessages(deviceIdentity)
-        server.accept(transport)
+        node.accept(transport)
 
         // Session exists
-        assertEquals(1, server.sessions.size)
+        assertEquals(1, node.sessions.size)
         // Peer not linked
-        val peer = server.peers["peer-1"]!!
+        val peer = node.peers["peer-1"]!!
         assertEquals(ConnectionState.DISCONNECTED, peer.connectionState)
         assertNull(peer.remoteIdentity)
         assertFalse(listener.events.any { it.startsWith("peerConnected") })
-        server.close()
+        node.close()
     }
 
     @Test
     fun `peer tracks remote parameters`() = runTest {
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "device-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
         val supply = SupplyParameters(voltage = Voltage(400.0), current = Current(32.0))
         val (_, transport) = channelTransportWithMessages(deviceIdentity, supply)
-        server.accept(transport)
+        node.accept(transport)
 
-        val peer = server.peers["device-1"]!!
+        val peer = node.peers["device-1"]!!
         assertNotNull(peer.latestSupply)
         assertEquals(400.0, peer.latestSupply!!.voltage?.volts)
         assertEquals(32.0, peer.latestSupply!!.current?.amperes)
-        server.close()
+        node.close()
     }
 
     @Test
     fun `peer disconnected when session closes`() = runTest {
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "device-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
         val (fake, transport) = channelTransportWithMessages(deviceIdentity)
-        server.accept(transport)
+        node.accept(transport)
 
-        val peer = server.peers["device-1"]!!
+        val peer = node.peers["device-1"]!!
         assertEquals(ConnectionState.CONNECTED, peer.connectionState)
 
         // Close the transport — session will complete and close
@@ -230,30 +230,30 @@ class PeerManagementTest {
 
         assertEquals(ConnectionState.DISCONNECTED, peer.connectionState)
         // Peer stays in the map
-        assertTrue(server.peers.containsKey("device-1"))
+        assertTrue(node.peers.containsKey("device-1"))
         assertContains(listener.events, "peerDisconnected:device-1")
-        server.close()
+        node.close()
     }
 
     @Test
     fun `removePeer disconnects active session`() = runTest {
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "device-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
         val (fake, transport) = channelTransportWithMessages(deviceIdentity)
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
-        assertEquals(ConnectionState.CONNECTED, server.peers["device-1"]?.connectionState)
+        assertEquals(ConnectionState.CONNECTED, node.peers["device-1"]?.connectionState)
 
-        server.removePeer("device-1")
+        node.removePeer("device-1")
 
-        assertTrue(server.peers.isEmpty())
+        assertTrue(node.peers.isEmpty())
         assertEquals(SessionState.CLOSED, session.state)
         assertTrue(fake.closed)
         assertContains(listener.events, "peerDisconnected:device-1")
-        server.close()
+        node.close()
     }
 
     // -- Integration tests (real sockets) --
@@ -265,9 +265,9 @@ class PeerManagementTest {
         val port = remoteServer.localPort
 
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener).tracked()
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener).tracked()
 
-        server.addPeer(
+        node.addPeer(
             PeerConfig.Outbound(
                 peerId = "remote-device",
                 connector = TcpPeerConnector("127.0.0.1", port),
@@ -279,7 +279,7 @@ class PeerManagementTest {
         val rawRemoteTransport = dev.breischl.keneth.transport.tcp.RawTcpServerTransport(remoteSocket)
         val remoteTransport = MessageTransport(rawRemoteTransport).tracked()
 
-        // EpServer's accept() expects the remote to send SessionParameters first
+        // EpNode's accept() expects the remote to send SessionParameters first
         // (same as for inbound connections). Send the device identity.
         remoteTransport.send(SessionParameters(identity = "remote-device", type = "charger"))
 
@@ -288,7 +288,7 @@ class PeerManagementTest {
             synchronized(listener.connectedPeers) { listener.connectedPeers.isNotEmpty() }
         }
 
-        val peer = server.peers["remote-device"]!!
+        val peer = node.peers["remote-device"]!!
         assertEquals(ConnectionState.CONNECTED, peer.connectionState)
         assertEquals("remote-device", peer.remoteIdentity)
     }
@@ -296,18 +296,18 @@ class PeerManagementTest {
     @Test
     fun `peer listener callbacks fire`() = runTest {
         val listener = RecordingListener()
-        val server = EpServer(serverIdentity, listener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = listener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.addPeer(PeerConfig.Inbound(peerId = "device-1"))
+        node.addPeer(PeerConfig.Inbound(peerId = "device-1"))
 
         val (fake, transport) = channelTransportWithMessages(deviceIdentity)
-        server.accept(transport)
+        node.accept(transport)
 
         assertContains(listener.events, "peerConnected:device-1")
 
         fake.close()
 
         assertContains(listener.events, "peerDisconnected:device-1")
-        server.close()
+        node.close()
     }
 }

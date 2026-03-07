@@ -18,7 +18,7 @@ class EpServerTest {
     private val serverIdentity = SessionParameters(identity = "test-server", type = "router")
     private val deviceIdentity = SessionParameters(identity = "test-device", type = "charger")
 
-    /** Records messages sent by the server and whether the transport was closed. */
+    /** Records messages sent by the node and whether the transport was closed. */
     private class RecordingTransportListener : TransportListener {
         val sentMessages = mutableListOf<Message>()
         var disconnected = false
@@ -35,7 +35,7 @@ class EpServerTest {
     /**
      * Creates an [InMemoryFrameTransport] pair pre-populated with [messages] as incoming frames.
      * The remote side's output is shut down so the local receive flow completes after draining them.
-     * Returns the recording listener (captures server sends and close) and the local [MessageTransport].
+     * Returns the recording listener (captures node sends and close) and the local [MessageTransport].
      */
     private suspend fun transportWithMessages(vararg messages: Message): Pair<RecordingTransportListener, MessageTransport> {
         val (localFT, remoteFT) = InMemoryFrameTransport.createPair()
@@ -74,41 +74,41 @@ class EpServerTest {
     }
 
     /** Records all listener calls for verification. */
-    private class RecordingListener : ServerListener {
+    private class RecordingListener : NodeListener {
         val events = mutableListOf<String>()
         var lastHandshakeFailReason: String? = null
         var lastDisconnectMessage: SoftDisconnect? = null
         var lastError: Throwable? = null
         val receivedMessages = mutableListOf<Message>()
 
-        override fun onSessionCreated(session: DeviceSessionSnapshot) {
+        override fun onSessionCreated(session: SessionSnapshot) {
             events.add("created")
         }
 
-        override fun onSessionActive(session: DeviceSessionSnapshot) {
+        override fun onSessionActive(session: SessionSnapshot) {
             events.add("active")
         }
 
-        override fun onMessageReceived(session: DeviceSessionSnapshot, message: Message) {
+        override fun onMessageReceived(session: SessionSnapshot, message: Message) {
             events.add("message:${message::class.simpleName}")
             receivedMessages.add(message)
         }
 
-        override fun onSessionHandshakeFailed(session: DeviceSessionSnapshot, reason: String) {
+        override fun onSessionHandshakeFailed(session: SessionSnapshot, reason: String) {
             events.add("handshakeFailed")
             lastHandshakeFailReason = reason
         }
 
-        override fun onSessionDisconnecting(session: DeviceSessionSnapshot, softDisconnect: SoftDisconnect?) {
+        override fun onSessionDisconnecting(session: SessionSnapshot, softDisconnect: SoftDisconnect?) {
             events.add("disconnecting")
             lastDisconnectMessage = softDisconnect
         }
 
-        override fun onSessionClosed(session: DeviceSessionSnapshot) {
+        override fun onSessionClosed(session: SessionSnapshot) {
             events.add("closed")
         }
 
-        override fun onSessionError(session: DeviceSessionSnapshot, error: Throwable) {
+        override fun onSessionError(session: SessionSnapshot, error: Throwable) {
             events.add("error")
             lastError = error
         }
@@ -119,42 +119,42 @@ class EpServerTest {
     @Test
     fun `handshake success transitions to ACTIVE`() = runTest {
         val (_, transport) = transportWithMessages(deviceIdentity)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         assertEquals(deviceIdentity.identity, session.sessionParameters?.identity)
         assertEquals(deviceIdentity.type, session.sessionParameters?.type)
-        server.close()
+        node.close()
     }
 
     @Test
     fun `server sends its own SessionParameters during handshake`() = runTest {
         val (listener, transport) = transportWithMessages(deviceIdentity)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        server.accept(transport)
+        node.accept(transport)
 
-        assertTrue(listener.sentMessages.isNotEmpty(), "Server should have sent a reply")
+        assertTrue(listener.sentMessages.isNotEmpty(), "Node should have sent a reply")
         val reply = listener.sentMessages[0] as? SessionParameters
         assertNotNull(reply)
         assertEquals("test-server", reply.identity)
         assertEquals("router", reply.type)
-        server.close()
+        node.close()
     }
 
     @Test
     fun `handshake failure when first message is not SessionParameters`() = runTest {
-        val serverListener = RecordingListener()
+        val nodeListener = RecordingListener()
         val (_, transport) = transportWithMessages(Ping)
-        val server = EpServer(serverIdentity, serverListener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = nodeListener, coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         assertEquals(SessionState.CLOSED, session.state)
-        assertContains(serverListener.events, "handshakeFailed")
-        assertContains(serverListener.lastHandshakeFailReason!!, "Ping")
-        server.close()
+        assertContains(nodeListener.events, "handshakeFailed")
+        assertContains(nodeListener.lastHandshakeFailReason!!, "Ping")
+        node.close()
     }
 
     // -- Parameter tracking tests --
@@ -166,14 +166,14 @@ class EpServerTest {
             current = Current(32.0),
         )
         val (_, transport) = transportWithMessages(deviceIdentity, supply)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         assertNotNull(session.latestSupply)
         assertEquals(400.0, session.latestSupply!!.voltage?.volts)
         assertEquals(32.0, session.latestSupply!!.current?.amperes)
-        server.close()
+        node.close()
     }
 
     @Test
@@ -183,14 +183,14 @@ class EpServerTest {
             current = Current(16.0),
         )
         val (_, transport) = transportWithMessages(deviceIdentity, demand)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         assertNotNull(session.latestDemand)
         assertEquals(400.0, session.latestDemand!!.voltage?.volts)
         assertEquals(16.0, session.latestDemand!!.current?.amperes)
-        server.close()
+        node.close()
     }
 
     @Test
@@ -200,32 +200,32 @@ class EpServerTest {
             capacity = Energy(50000.0),
         )
         val (_, transport) = transportWithMessages(deviceIdentity, storage)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         assertNotNull(session.latestStorage)
         assertEquals(75.0, session.latestStorage!!.soc?.percent)
         assertEquals(50000.0, session.latestStorage!!.capacity?.wattHours)
-        server.close()
+        node.close()
     }
 
     // -- SoftDisconnect tests --
 
     @Test
     fun `SoftDisconnect transitions session to DISCONNECTING then CLOSED`() = runTest {
-        val serverListener = RecordingListener()
+        val nodeListener = RecordingListener()
         val softDisconnect = SoftDisconnect(reconnect = true, reason = "update")
         val (_, transport) = transportWithMessages(deviceIdentity, softDisconnect)
-        val server = EpServer(serverIdentity, serverListener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = nodeListener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.accept(transport)
+        node.accept(transport)
 
-        assertContains(serverListener.events, "disconnecting")
-        assertContains(serverListener.events, "closed")
-        assertEquals(true, serverListener.lastDisconnectMessage?.reconnect)
-        assertEquals("update", serverListener.lastDisconnectMessage?.reason)
-        server.close()
+        assertContains(nodeListener.events, "disconnecting")
+        assertContains(nodeListener.events, "closed")
+        assertEquals(true, nodeListener.lastDisconnectMessage?.reconnect)
+        assertEquals("update", nodeListener.lastDisconnectMessage?.reason)
+        node.close()
     }
 
     // -- Multiple sessions --
@@ -236,50 +236,50 @@ class EpServerTest {
         val device2 = SessionParameters(identity = "device-2")
         val (_, transport1) = transportWithMessages(device1)
         val (_, transport2) = transportWithMessages(device2)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session1 = server.accept(transport1)
-        val session2 = server.accept(transport2)
+        val session1 = node.accept(transport1)
+        val session2 = node.accept(transport2)
 
         assertNotEquals(session1.id, session2.id)
         assertEquals("device-1", session1.sessionParameters?.identity)
         assertEquals("device-2", session2.sessionParameters?.identity)
-        server.close()
+        node.close()
     }
 
-    // -- Server close --
+    // -- Node close --
 
     @Test
-    fun `server close cleans up all sessions`() = runTest {
+    fun `node close cleans up all sessions`() = runTest {
         val (listener1, transport1) = transportWithMessages(deviceIdentity)
         val (listener2, transport2) = transportWithMessages(SessionParameters(identity = "device-2"))
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session1 = server.accept(transport1)
-        val session2 = server.accept(transport2)
+        val session1 = node.accept(transport1)
+        val session2 = node.accept(transport2)
 
-        server.close()
+        node.close()
 
         assertTrue(listener1.disconnected)
         assertTrue(listener2.disconnected)
         assertEquals(SessionState.CLOSED, session1.state)
         assertEquals(SessionState.CLOSED, session2.state)
-        assertTrue(server.sessions.isEmpty())
+        assertTrue(node.sessions.isEmpty())
     }
 
-    // -- Server disconnect --
+    // -- Node disconnect --
 
     @Test
     fun `disconnect sends SoftDisconnect and closes session`() = runTest {
         val (fake, transport) = channelTransportWithMessages(deviceIdentity)
-        val server = EpServer(serverIdentity, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         // Session should be ACTIVE (channel flow hasn't completed)
         assertEquals(SessionState.ACTIVE, session.state)
 
-        server.disconnect(session, reason = "shutting down")
+        node.disconnect(session, reason = "shutting down")
 
         // Verify a SoftDisconnect was sent (second frame after SessionParameters handshake reply)
         val sentFrames = fake.sentFrames
@@ -291,56 +291,56 @@ class EpServerTest {
         assertEquals("shutting down", disconnectMsg.reason)
         assertEquals(false, disconnectMsg.reconnect)
         assertEquals(SessionState.CLOSED, session.state)
-        assertFalse(server.sessions.containsKey(session.id))
-        server.close()
+        assertFalse(node.sessions.containsKey(session.id))
+        node.close()
     }
 
     // -- Listener callback order --
 
     @Test
     fun `listener callbacks fire in correct order for successful session`() = runTest {
-        val serverListener = RecordingListener()
+        val nodeListener = RecordingListener()
         val supply = SupplyParameters(voltage = Voltage(400.0))
         val (_, transport) = transportWithMessages(deviceIdentity, supply)
-        val server = EpServer(serverIdentity, serverListener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = nodeListener, coroutineContext = UnconfinedTestDispatcher())
 
-        server.accept(transport)
+        node.accept(transport)
 
-        assertEquals("created", serverListener.events[0])
-        assertEquals("active", serverListener.events[1])
-        assertEquals("message:SupplyParameters", serverListener.events[2])
-        assertContains(serverListener.events, "closed")
-        server.close()
+        assertEquals("created", nodeListener.events[0])
+        assertEquals("active", nodeListener.events[1])
+        assertEquals("message:SupplyParameters", nodeListener.events[2])
+        assertContains(nodeListener.events, "closed")
+        node.close()
     }
 
     // -- Empty receive flow --
 
     @Test
     fun `empty receive flow cleans up session`() = runTest {
-        val serverListener = RecordingListener()
+        val nodeListener = RecordingListener()
         val (_, transport) = transportWithMessages() // no messages at all
-        val server = EpServer(serverIdentity, serverListener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = nodeListener, coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         assertEquals(SessionState.CLOSED, session.state)
-        assertContains(serverListener.events, "closed")
-        assertTrue(server.sessions.isEmpty())
-        server.close()
+        assertContains(nodeListener.events, "closed")
+        assertTrue(node.sessions.isEmpty())
+        node.close()
     }
 
     // -- Listener exception swallowed --
 
     @Test
     fun `listener exception does not crash session`() = runTest {
-        val throwingListener = object : ServerListener {
+        val throwingListener = object : NodeListener {
             var activeCallCount = 0
 
-            override fun onSessionCreated(session: DeviceSessionSnapshot) {
+            override fun onSessionCreated(session: SessionSnapshot) {
                 throw RuntimeException("boom on create")
             }
 
-            override fun onSessionActive(session: DeviceSessionSnapshot) {
+            override fun onSessionActive(session: SessionSnapshot) {
                 activeCallCount++
                 throw RuntimeException("boom on active")
             }
@@ -348,31 +348,31 @@ class EpServerTest {
 
         val supply = SupplyParameters(voltage = Voltage(400.0))
         val (_, transport) = transportWithMessages(deviceIdentity, supply)
-        val server = EpServer(serverIdentity, throwingListener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = throwingListener, coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         // Session still completed its lifecycle despite listener exceptions
         assertEquals(1, throwingListener.activeCallCount)
         assertNotNull(session.sessionParameters)
-        server.close()
+        node.close()
     }
 
     // -- Ping handling --
 
     @Test
     fun `Ping on active session does not change state`() = runTest {
-        val serverListener = RecordingListener()
+        val nodeListener = RecordingListener()
         val (_, transport) = transportWithMessages(deviceIdentity, Ping)
-        val server = EpServer(serverIdentity, serverListener, coroutineContext = UnconfinedTestDispatcher())
+        val node = EpNode(config = NodeConfig(identity = serverIdentity), listener = nodeListener, coroutineContext = UnconfinedTestDispatcher())
 
-        val session = server.accept(transport)
+        val session = node.accept(transport)
 
         // Ping should be received but not change any parameters
-        assertContains(serverListener.events, "message:Ping")
+        assertContains(nodeListener.events, "message:Ping")
         assertNull(session.latestSupply)
         assertNull(session.latestDemand)
         assertNull(session.latestStorage)
-        server.close()
+        node.close()
     }
 }
