@@ -131,6 +131,9 @@ class EpServer(
                 sessionToPeer[session.id] = peer
                 _sessions[session.id] = session
                 listener.safeNotify { onSessionCreated(session.snapshot()) }
+                // Outbound side initiates the EP handshake by sending our identity first.
+                // The remote peer's server receives this and responds with its own identity.
+                session.send(serverParameters)
                 runSession(session)
             } catch (e: CancellationException) {
                 throw e

@@ -1,0 +1,119 @@
+package dev.breischl.keneth.server
+
+import dev.breischl.keneth.core.messages.SessionParameters
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import kotlin.test.*
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class InMemoryInboundAcceptorTest {
+
+    private val identityA = SessionParameters(identity = "node-a", type = "router")
+    private val identityB = SessionParameters(identity = "node-b", type = "router")
+
+    private class RecordingNodeListener : NodeListener {
+        val connectedPeers = mutableListOf<PeerSnapshot>()
+        val disconnectedPeers = mutableListOf<PeerSnapshot>()
+
+        override fun onPeerConnected(peer: PeerSnapshot) {
+            connectedPeers.add(peer)
+        }
+
+        override fun onPeerDisconnected(peer: PeerSnapshot) {
+            disconnectedPeers.add(peer)
+        }
+    }
+
+    @Test
+    fun `connect queues transport and start drains it into server accept`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val acceptor = InMemoryInboundAcceptor(dispatcher)
+
+        val sessions = mutableListOf<DeviceSession>()
+        val server = EpServer(
+            serverParameters = identityA,
+            coroutineContext = dispatcher,
+        )
+
+        // start before connect — channel is empty, loop suspends
+        acceptor.start(server)
+        assertEquals(0, server.sessions.size)
+
+        // connect enqueues one transport; drain loop should pick it up immediately
+        acceptor.connect(listener = null)
+        assertEquals(1, server.sessions.size)
+
+        acceptor.close()
+        server.close()
+    }
+
+    @Test
+    fun `multiple connects are all accepted`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val acceptor = InMemoryInboundAcceptor(dispatcher)
+        val server = EpServer(serverParameters = identityA, coroutineContext = dispatcher)
+
+        acceptor.start(server)
+
+        repeat(3) { acceptor.connect(listener = null) }
+
+        assertEquals(3, server.sessions.size)
+
+        acceptor.close()
+        server.close()
+    }
+
+    @Test
+    fun `connect before start — transports are buffered and accepted on start`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val acceptor = InMemoryInboundAcceptor(dispatcher)
+        val server = EpServer(serverParameters = identityA, coroutineContext = dispatcher)
+
+        // connect first, start second
+        repeat(2) { acceptor.connect(listener = null) }
+        assertEquals(0, server.sessions.size)
+
+        acceptor.start(server)
+        assertEquals(2, server.sessions.size)
+
+        acceptor.close()
+        server.close()
+    }
+
+    @Test
+    fun `two EpNodes wire together via InMemoryInboundAcceptor and both onPeerConnected fire`() = runTest {
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val acceptor = InMemoryInboundAcceptor(dispatcher)
+
+        val listenerA = RecordingNodeListener()
+        val nodeA = EpNode(
+            config = NodeConfig(identity = identityA, acceptor = acceptor),
+            listener = listenerA,
+            coroutineContext = dispatcher,
+        )
+
+        val listenerB = RecordingNodeListener()
+        val nodeB = EpNode(
+            config = NodeConfig(identity = identityB),
+            listener = listenerB,
+            coroutineContext = dispatcher,
+        )
+
+        nodeA.addPeer(PeerConfig.Inbound(peerId = "node-b", expectedIdentity = "node-b"))
+        nodeB.addPeer(PeerConfig.Outbound(peerId = "node-a", connector = acceptor, expectedIdentity = "node-a"))
+
+        nodeA.start()
+        // nodeB has no acceptor; start is a no-op but ensures symmetry with real usage
+        nodeB.start()
+
+        assertEquals(1, listenerA.connectedPeers.size, "nodeA should see node-b connected")
+        assertEquals("node-b", listenerA.connectedPeers[0].peerId)
+
+        assertEquals(1, listenerB.connectedPeers.size, "nodeB should see node-a connected")
+        assertEquals("node-a", listenerB.connectedPeers[0].peerId)
+
+        nodeA.close()
+        nodeB.close()
+    }
+}

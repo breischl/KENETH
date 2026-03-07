@@ -71,14 +71,20 @@ class InMemoryFrameTransport internal constructor(
  * A [PeerConnector] for in-process simulation without network I/O.
  *
  * Creates a pair of [InMemoryFrameTransport]s internally. One side is used when
- * [connect] is called (the outbound/local side); the other is exposed as [remoteTransport]
- * and should be passed to the peer's server via `server.accept(MessageTransport(connector.remoteTransport))`.
+ * [connect] is called (the outbound/local side); the other is exposed as [remoteTransport].
  *
- * Example:
+ * For wiring two [dev.breischl.keneth.server.EpNode]s together, prefer
+ * `InMemoryInboundAcceptor` in the server module — it implements both `InboundAcceptor`
+ * and `PeerConnector` and handles the accept loop automatically.
+ *
+ * Use [remoteTransport] directly as a lower-level escape hatch for single-transport injection
+ * (e.g. driving a simulated device from test code):
+ *
  * ```kotlin
  * val connector = InMemoryPeerConnector()
- * nodeA.addPeer(PeerConfig.Outbound("node-b", connector))
- * nodeB.server.accept(MessageTransport(connector.remoteTransport))
+ * node.addPeer(PeerConfig.Outbound("sim-device", connector))
+ * // Drive the remote side manually:
+ * MessageTransport(connector.remoteTransport).send(deviceIdentity)
  * ```
  */
 class InMemoryPeerConnector : PeerConnector {
