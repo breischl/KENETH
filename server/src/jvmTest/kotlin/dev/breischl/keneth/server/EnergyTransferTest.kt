@@ -73,7 +73,7 @@ class EnergyTransferTest {
         val listener = RecordingNodeListener()
         val node = EpNode(
             identity = serverIdentity,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = testDispatcher,
         )
 
@@ -254,7 +254,7 @@ class EnergyTransferTest {
         val listener = RecordingNodeListener()
         val node = EpNode(
             identity = serverIdentity,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = dispatcher,
         )
 

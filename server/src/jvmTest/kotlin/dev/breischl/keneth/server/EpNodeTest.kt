@@ -127,7 +127,7 @@ class EpNodeTest {
         val listener = RecordingNodeListener()
         val node = EpNode(
             identity = serverIdentity,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = UnconfinedTestDispatcher(),
         )
 
@@ -155,7 +155,7 @@ class EpNodeTest {
         val listener = RecordingNodeListener()
         val node = EpNode(
             identity = serverIdentity,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = UnconfinedTestDispatcher(),
         )
 
@@ -183,7 +183,7 @@ class EpNodeTest {
         val listener = RecordingNodeListener()
         val node = EpNode(
             identity = serverIdentity,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = UnconfinedTestDispatcher(),
         )
 
@@ -212,7 +212,7 @@ class EpNodeTest {
         val node = EpNode(
             identity = serverIdentity,
             acceptor = acceptor,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = UnconfinedTestDispatcher(),
         )
 
@@ -254,7 +254,7 @@ class EpNodeTest {
         val events = mutableListOf<String>()
         val node = EpNode(
             identity = serverIdentity,
-            listener = object : NodeListener {
+            nodeListener = object : NodeListener {
                 override fun onSessionCreated(session: SessionSnapshot) { events.add("created") }
             },
             coroutineContext = UnconfinedTestDispatcher(),
@@ -271,7 +271,7 @@ class EpNodeTest {
         val events = mutableListOf<String>()
         val node = EpNode(
             identity = serverIdentity,
-            listener = object : NodeListener {
+            nodeListener = object : NodeListener {
                 override fun onSessionActive(session: SessionSnapshot) { events.add("active") }
             },
             coroutineContext = UnconfinedTestDispatcher(),
@@ -287,7 +287,7 @@ class EpNodeTest {
     fun `NodeListener onSessionError fires on transport error`() = runTest {
         val node = EpNode(
             identity = serverIdentity,
-            listener = object : NodeListener {
+            nodeListener = object : NodeListener {
                 override fun onSessionError(session: SessionSnapshot, error: Throwable) {
                     // just needs to not throw
                 }
@@ -334,7 +334,7 @@ class EpNodeTest {
         val listener = RecordingNodeListener()
         val node = EpNode(
             identity = nodeIdentity,
-            listener = listener,
+            nodeListener = listener,
             coroutineContext = UnconfinedTestDispatcher(),
         )
 

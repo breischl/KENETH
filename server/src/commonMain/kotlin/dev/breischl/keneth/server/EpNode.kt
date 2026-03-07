@@ -38,14 +38,14 @@ import kotlin.uuid.Uuid
  * @param identity The node's identity, sent to each peer during the EP handshake.
  * @param acceptor Strategy for accepting inbound connections, or null to disable listening.
  * @param transportListener Optional listener for transport-level events (frame/message I/O).
- * @param listener Optional callback for session and peer lifecycle events.
+ * @param nodeListener Optional callback for session and peer lifecycle events.
  * @param coroutineContext Additional coroutine context elements (e.g., a test dispatcher).
  */
 class EpNode(
     val identity: SessionParameters,
     val acceptor: InboundAcceptor? = null,
     val transportListener: TransportListener? = null,
-    private val listener: NodeListener? = null,
+    private val nodeListener: NodeListener? = null,
     private val coroutineContext: CoroutineContext = EmptyCoroutineContext,
 ) : AutoCloseable {
 
@@ -88,7 +88,7 @@ class EpNode(
         )
         wireAfterSend(session)
         _sessions[session.id] = session
-        listener.safeNotify { onSessionCreated(session.snapshot(peerId = null)) }
+        nodeListener.safeNotify { onSessionCreated(session.snapshot(peerId = null)) }
         sessionScope.launch { runSession(session) }
         return session
     }
@@ -158,7 +158,7 @@ class EpNode(
             } catch (_: Exception) {
                 // Transport may already be broken
             }
-            listener.safeNotify { onSessionDisconnecting(session.snapshot(peerId = peer?.peerId), null) }
+            nodeListener.safeNotify { onSessionDisconnecting(session.snapshot(peerId = peer?.peerId), null) }
         }
         closeSession(session)
     }
@@ -265,7 +265,7 @@ class EpNode(
                 peer.session = session
                 sessionToPeer[session.id] = peer
                 _sessions[session.id] = session
-                listener.safeNotify { onSessionCreated(session.snapshot(peerId = peer.peerId)) }
+                nodeListener.safeNotify { onSessionCreated(session.snapshot(peerId = peer.peerId)) }
                 // Outbound side initiates the EP handshake by sending our identity first.
                 session.send(identity)
                 runSession(session)
@@ -281,7 +281,7 @@ class EpNode(
     private fun wireAfterSend(session: DeviceSession) {
         session.afterSend = { message ->
             val peer = peerForSession(session.id)
-            listener.safeNotify { onMessageSent(session.snapshot(peerId = peer?.peerId), message) }
+            nodeListener.safeNotify { onMessageSent(session.snapshot(peerId = peer?.peerId), message) }
         }
     }
 
@@ -302,7 +302,7 @@ class EpNode(
             throw e
         } catch (e: Exception) {
             val peer = peerForSession(session.id)
-            listener.safeNotify { onSessionError(session.snapshot(peerId = peer?.peerId), e) }
+            nodeListener.safeNotify { onSessionError(session.snapshot(peerId = peer?.peerId), e) }
         } finally {
             closeSession(session)
         }
@@ -310,7 +310,7 @@ class EpNode(
 
     private suspend fun handleHandshake(session: DeviceSession, message: Message) {
         if (message !is SessionParameters) {
-            listener.safeNotify {
+            nodeListener.safeNotify {
                 onSessionHandshakeFailed(
                     session.snapshot(peerId = null),
                     "Expected SessionParameters, got ${message::class.simpleName}"
@@ -322,17 +322,17 @@ class EpNode(
         session.sessionParameters = message
         session.state = SessionState.ACTIVE
         session.send(identity)
-        listener.safeNotify { onSessionActive(session.snapshot(peerId = null)) }
+        nodeListener.safeNotify { onSessionActive(session.snapshot(peerId = null)) }
 
         // Link inbound sessions to configured peers by identity
         val peer = linkInboundPeer(session, message.identity)
         if (peer != null) {
-            listener.safeNotify { onPeerConnected(session.snapshot(peerId = peer.peerId)) }
+            nodeListener.safeNotify { onPeerConnected(session.snapshot(peerId = peer.peerId)) }
         } else {
             // Check if this session was already linked by connectOutbound
             val outboundPeer = sessionToPeer[session.id]
             if (outboundPeer != null) {
-                listener.safeNotify { onPeerConnected(session.snapshot(peerId = outboundPeer.peerId)) }
+                nodeListener.safeNotify { onPeerConnected(session.snapshot(peerId = outboundPeer.peerId)) }
             }
         }
     }
@@ -355,10 +355,10 @@ class EpNode(
         val peer = peerForSession(session.id)
         if (message is SoftDisconnect) {
             session.state = SessionState.DISCONNECTING
-            listener.safeNotify { onSessionDisconnecting(session.snapshot(peerId = peer?.peerId), message) }
+            nodeListener.safeNotify { onSessionDisconnecting(session.snapshot(peerId = peer?.peerId), message) }
         }
 
-        listener.safeNotify { onMessageReceived(session.snapshot(peerId = peer?.peerId), message) }
+        nodeListener.safeNotify { onMessageReceived(session.snapshot(peerId = peer?.peerId), message) }
     }
 
     private fun closeSession(session: DeviceSession) {
@@ -369,8 +369,8 @@ class EpNode(
         if (peer != null) {
             peer.session = null
             stopTransfer(peer.peerId)
-            listener.safeNotify { onPeerDisconnected(session.snapshot(peerId = peer.peerId)) }
+            nodeListener.safeNotify { onPeerDisconnected(session.snapshot(peerId = peer.peerId)) }
         }
-        listener.safeNotify { onSessionClosed(session.snapshot(peerId = peer?.peerId)) }
+        nodeListener.safeNotify { onSessionClosed(session.snapshot(peerId = peer?.peerId)) }
     }
 }

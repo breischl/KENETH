@@ -17,7 +17,7 @@ import dev.breischl.keneth.server.tcp.TcpAcceptor
 val node = EpNode(
     identity = SessionParameters(identity = "router-1", type = "router"),
     acceptor = TcpAcceptor(port = 56540),
-    listener = object : NodeListener {
+    nodeListener = object : NodeListener {
         override fun onPeerConnected(session: SessionSnapshot) {
             println("Peer connected: ${session.peerId}")
         }

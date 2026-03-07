@@ -64,7 +64,7 @@ class InMemoryInboundAcceptorTest {
     }
 
     @Test
-    fun `connect before start — transports are buffered and accepted on start`() = runTest {
+    fun `connect before start - transports are buffered and accepted on start`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         val acceptor = InMemoryInboundAcceptor(dispatcher)
         val node = EpNode(identity = identityA, coroutineContext = dispatcher)
@@ -89,14 +89,14 @@ class InMemoryInboundAcceptorTest {
         val nodeA = EpNode(
             identity = identityA,
             acceptor = acceptor,
-            listener = listenerA,
+            nodeListener = listenerA,
             coroutineContext = dispatcher,
         )
 
         val listenerB = RecordingNodeListener()
         val nodeB = EpNode(
             identity = identityB,
-            listener = listenerB,
+            nodeListener = listenerB,
             coroutineContext = dispatcher,
         )
 
