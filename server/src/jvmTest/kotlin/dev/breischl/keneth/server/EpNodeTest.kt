@@ -288,6 +288,21 @@ class EpNodeTest {
         node.close()
     }
 
+    // -- SessionSnapshot tests --
+
+    @Test
+    fun `SessionSnapshot includes peerId when session is linked to a peer`() = runTest {
+        val node = EpNode(config = nodeConfig, coroutineContext = UnconfinedTestDispatcher())
+        node.addPeer(PeerConfig.Inbound(peerId = "charger-1", expectedIdentity = "test-device"))
+        val (fake, transport) = channelTransportWithMessages(deviceIdentity)
+        val session = node.accept(transport)
+        assertEquals("charger-1", session.snapshot().peerId)
+        assertEquals("test-device", session.snapshot().remoteIdentity)
+        assertNotNull(session.snapshot().sessionParameters)
+        fake.close()
+        node.close()
+    }
+
     // -- InMemoryFrameTransport integration --
 
     @Test
