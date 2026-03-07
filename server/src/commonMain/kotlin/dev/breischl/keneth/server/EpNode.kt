@@ -15,11 +15,12 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 /**
- * High-level EnergyNet Protocol node.
+ * [EpNode] can be loosely thought of as the "brain stem" of an EnergyNet node.
  *
- * Manages device sessions, peer lifecycle, and energy transfers in one place.
- * Accepts [MessageTransport] connections (via [accept] or an [InboundAcceptor]),
- * enforces the EP handshake, dispatches messages, and tracks per-device state.
+ * It handles low-level autonomic functions like receiving and opening connections,
+ * listening for remote messages, and sending messages when told to. However, it lacks any higher-level behavior -
+ * user code must implement that by registering for listener callbacks on received messages, reacting to those messages,
+ * and directing [EpNode] to send messages in response.
  *
  * Example:
  * ```kotlin

@@ -5,8 +5,6 @@ and energy parameter publishing over TCP connections.
 
 ## Quickstart
 
-### High-level API with EpNode
-
 `EpNode` is the main entry point. It manages peer connections and energy transfers:
 
 ```kotlin
