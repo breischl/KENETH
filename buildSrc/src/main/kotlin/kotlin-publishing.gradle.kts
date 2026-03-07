@@ -54,3 +54,10 @@ if (signingKey != null) {
         sign(publishing.publications)
     }
 }
+
+// Workaround for https://github.com/gradle/gradle/issues/26091: the shared javadocJar artifact
+// causes Gradle to lose track of implicit sign→publish task dependencies in KMP projects.
+// Declaring mustRunAfter makes the ordering explicit.
+tasks.withType<AbstractPublishToMaven>().configureEach {
+    mustRunAfter(tasks.withType<Sign>())
+}
