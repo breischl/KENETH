@@ -9,6 +9,7 @@ Releases are published to [Maven Central](https://central.sonatype.com/) via the
 
 1. Create and push a tag:
    ```bash
+   git checkout main && git pull
    git tag v1.2.3
    git push origin v1.2.3
    ```
