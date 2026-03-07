@@ -169,7 +169,7 @@ class EnergyTransferTest {
     @Test
     fun `stop transfer stops publishing`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val (node, fake, listener) = createNodeWithConnectedPeer(dispatcher)
+        val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
         val supply = SupplyParameters(voltage = Voltage(400.0))
         val transfer = node.startTransfer(
@@ -227,7 +227,7 @@ class EnergyTransferTest {
     @Test
     fun `peer disconnect stops transfer`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val (node, fake, listener) = createNodeWithConnectedPeer(dispatcher)
+        val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
         val transfer = node.startTransfer(
             "charger-1",

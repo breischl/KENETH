@@ -38,7 +38,7 @@ node.addPeer(PeerConfig.Inbound(peerId = "charger-1"))
 // Start listening for connections
 node.start()
 
-// Start publishing energy parameters to a connected peer
+// Start publishing transfer parameters to a connected peer
 when (val result = node.startTransfer(
     peerId = "charger-1",
     params = TransferParams(
