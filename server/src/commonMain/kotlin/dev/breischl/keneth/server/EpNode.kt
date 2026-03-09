@@ -188,7 +188,9 @@ class EpNode(
      * the transfer stops immediately.
      *
      * @param peerId The peer to send parameters to.
-     * @param paramsProvider Called each tick to obtain the parameters to send.
+     * @param paramsProvider Called each tick to obtain the parameters to send. Any field that is
+     *   non-null on the first tick must remain non-null for the lifetime of the transfer; see
+     *   [TransferParams] for details.
      * @param tickRate How often to send parameters. Defaults to 100ms. EnergyNet spec requires no more than 200ms or remote side will cancel transfer.
      */
     fun startTransfer(
