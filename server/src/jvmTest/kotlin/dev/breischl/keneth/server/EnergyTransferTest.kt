@@ -1,11 +1,8 @@
 package dev.breischl.keneth.server
 
-import dev.breischl.keneth.core.frames.Frame
 import dev.breischl.keneth.core.messages.DemandParameters
-import dev.breischl.keneth.core.messages.Message
 import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.messages.SupplyParameters
-import dev.breischl.keneth.core.parsing.ParseResult
 import dev.breischl.keneth.core.values.Current
 import dev.breischl.keneth.core.values.Voltage
 import dev.breischl.keneth.transport.MessageTransport
@@ -13,37 +10,13 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.KSerializer
-import net.orandja.obor.codec.Cbor
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EnergyTransferTest {
-    private val cbor = Cbor { ingnoreUnknownKeys = true }
-
     private val serverIdentity = SessionParameters(identity = "test-node", type = "router")
     private val deviceIdentity = SessionParameters(identity = "test-device", type = "charger")
-
-    private fun encodeMessage(message: Message): ByteArray {
-        // payloadSerializer is declared as KSerializer<out Message> (covariant) to allow subtype
-        // serializers. The cast to KSerializer<Message> is safe here because the serializer and
-        // the value come from the same concrete object — the serializer only receives values of
-        // exactly that type, so the invariant requirement is never violated at runtime.
-        @Suppress("UNCHECKED_CAST")
-        return cbor.encodeToByteArray(
-            message.payloadSerializer as KSerializer<Message>,
-            message
-        )
-    }
-
-    private fun frameResultFor(message: Message): ParseResult<Frame> {
-        val payload = encodeMessage(message)
-        return ParseResult.success(
-            Frame(emptyMap(), message.typeId, payload),
-            emptyList()
-        )
-    }
 
     /** Records NodeListener events. */
     private class RecordingNodeListener : NodeListener {

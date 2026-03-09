@@ -1,24 +1,17 @@
 package dev.breischl.keneth.server
 
-import dev.breischl.keneth.core.frames.Frame
-import dev.breischl.keneth.core.messages.Message
 import dev.breischl.keneth.core.messages.SessionParameters
-import dev.breischl.keneth.core.parsing.ParseResult
 import dev.breischl.keneth.transport.MessageTransport
 import dev.breischl.keneth.transport.tcp.TcpPeerConnector
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.KSerializer
-import net.orandja.obor.codec.Cbor
 import java.net.ServerSocket
 import kotlin.test.*
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PeerManagementTest {
-    private val cbor = Cbor { ingnoreUnknownKeys = true }
-
     private val serverIdentity = SessionParameters(identity = "test-server", type = "router")
     private val deviceIdentity = SessionParameters(identity = "device-1", type = "charger")
 
@@ -32,30 +25,6 @@ class PeerManagementTest {
     @AfterTest
     fun tearDown() {
         cleanupList.reversed().forEach { runCatching { it.close() } }
-    }
-
-    private fun encodeMessage(message: Message): ByteArray {
-        @Suppress("UNCHECKED_CAST")
-        return cbor.encodeToByteArray(
-            message.payloadSerializer as KSerializer<Message>,
-            message
-        )
-    }
-
-    private fun frameResultFor(message: Message): ParseResult<Frame> {
-        val payload = encodeMessage(message)
-        return ParseResult.success(
-            Frame(emptyMap(), message.typeId, payload),
-            emptyList()
-        )
-    }
-
-    private suspend fun channelTransportWithMessages(vararg messages: Message): Pair<ChannelFakeFrameTransport, MessageTransport> {
-        val fake = ChannelFakeFrameTransport()
-        for (msg in messages) {
-            fake.enqueue(frameResultFor(msg))
-        }
-        return fake to MessageTransport(fake)
     }
 
     private class RecordingListener : NodeListener {

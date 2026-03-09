@@ -11,7 +11,7 @@ and energy parameter publishing over TCP connections.
 import dev.breischl.keneth.core.messages.*
 import dev.breischl.keneth.core.values.*
 import dev.breischl.keneth.server.*
-import dev.breischl.keneth.server.tcp.TcpAcceptor
+import dev.breischl.keneth.server.TcpAcceptor
 
 // Create and start a node
 val node = EpNode(
@@ -37,12 +37,15 @@ node.addPeer(PeerConfig.Inbound(peerId = "charger-1"))
 node.start()
 
 // Start publishing transfer parameters to a connected peer
+var supply = SupplyParameters(voltage = Voltage(400.0), current = Current(32.0))
 when (val result = node.startTransfer(
     peerId = "charger-1",
-    params = TransferParams(
-        supply = SupplyParameters(voltage = Voltage(400.0), current = Current(32.0)),
-        demand = DemandParameters(voltage = Voltage(400.0)),
-    ),
+    paramsProvider = {
+        TransferParams(
+            supply = supply,
+            demand = DemandParameters(voltage = Voltage(400.0)),
+        )
+    },
 )) {
     is StartTransferResult.Success -> println("Transfer started")
     is StartTransferResult.PeerNotFound -> println("Unknown peer: ${result.peerId}")
@@ -50,12 +53,8 @@ when (val result = node.startTransfer(
     is StartTransferResult.TransferAlreadyActive -> println("Already transferring")
 }
 
-// Update parameters dynamically
-node.updateTransfer(
-    "charger-1", TransferParams(
-        supply = SupplyParameters(voltage = Voltage(800.0), current = Current(16.0)),
-    )
-)
+// Update parameters dynamically — paramsProvider is called each tick, so just update the captured state
+supply = SupplyParameters(voltage = Voltage(800.0), current = Current(16.0))
 
 // Stop transfer and clean up
 node.stopTransfer("charger-1")
@@ -110,7 +109,6 @@ Inbound connections are matched to configured peers by comparing the remote devi
 configurable tick rate (default 100ms). Each non-null field in `TransferParams` is sent
 as a separate EP message per tick.
 
-- **`updateTransfer()`** — atomically swaps parameters; next tick uses the new values
 - **`stopTransfer()`** — cancels publishing and marks the transfer `STOPPED`
 - Transfers auto-stop when the peer disconnects
 
@@ -133,4 +131,3 @@ Server logic lives in `commonMain`. Platform-specific code provides the TCP acce
 - TLS configuration on peers
 - Certificate-based inbound authorization
 - Auto-reconnect with exponential backoff
-- Ping timeout / dead connection detection

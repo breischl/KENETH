@@ -1,41 +1,21 @@
 package dev.breischl.keneth.server
 
-import dev.breischl.keneth.core.frames.Frame
-import dev.breischl.keneth.core.messages.Message
 import dev.breischl.keneth.core.messages.Ping
 import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.messages.SupplyParameters
-import dev.breischl.keneth.core.parsing.ParseResult
 import dev.breischl.keneth.transport.MessageTransport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.KSerializer
-import net.orandja.obor.codec.Cbor
 import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceiveTimeoutTest {
-    private val cbor = Cbor { ingnoreUnknownKeys = true }
     private val serverIdentity = SessionParameters(identity = "test-node", type = "router")
     private val deviceIdentity = SessionParameters(identity = "test-device", type = "charger")
-
-    private fun encodeMessage(message: Message): ByteArray {
-        @Suppress("UNCHECKED_CAST")
-        return cbor.encodeToByteArray(message.payloadSerializer as KSerializer<Message>, message)
-    }
-
-    private fun frameResultFor(message: Message): ParseResult<Frame> {
-        val payload = encodeMessage(message)
-        return ParseResult.success(Frame(emptyMap(), message.typeId, payload), emptyList())
-    }
-
-    private suspend fun ChannelFakeFrameTransport.enqueueMessage(message: Message) {
-        enqueue(frameResultFor(message))
-    }
 
     // ── idle timeout ──────────────────────────────────────────────────────────
 

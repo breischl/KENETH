@@ -1,8 +1,6 @@
 package dev.breischl.keneth.server
 
-import dev.breischl.keneth.core.frames.Frame
 import dev.breischl.keneth.core.messages.*
-import dev.breischl.keneth.core.parsing.ParseResult
 import dev.breischl.keneth.core.values.Voltage
 import dev.breischl.keneth.transport.InMemoryFrameTransport
 import dev.breischl.keneth.transport.MessageTransport
@@ -13,7 +11,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class EpServerTest {
+class EpNodeSessionTest {
     private val serverIdentity = SessionParameters(identity = "test-server", type = "router")
     private val deviceIdentity = SessionParameters(identity = "test-device", type = "charger")
 
@@ -46,30 +44,6 @@ class EpServerTest {
         val listener = RecordingTransportListener()
         localFT.listener = listener
         return listener to MessageTransport(localFT, listener = listener)
-    }
-
-    private suspend fun channelTransportWithMessages(vararg messages: Message): Pair<ChannelFakeFrameTransport, MessageTransport> {
-        val fake = ChannelFakeFrameTransport()
-        for (msg in messages) {
-            fake.enqueue(frameResultFor(msg))
-        }
-        return fake to MessageTransport(fake)
-    }
-
-    private fun encodeMessage(message: Message): ByteArray {
-        @Suppress("UNCHECKED_CAST")
-        return net.orandja.obor.codec.Cbor { ingnoreUnknownKeys = true }.encodeToByteArray(
-            message.payloadSerializer as kotlinx.serialization.KSerializer<Message>,
-            message
-        )
-    }
-
-    private fun frameResultFor(message: Message): ParseResult<Frame> {
-        val payload = encodeMessage(message)
-        return ParseResult.success(
-            Frame(emptyMap(), message.typeId, payload),
-            emptyList()
-        )
     }
 
     /** Records all listener calls for verification. */
@@ -240,8 +214,7 @@ class EpServerTest {
         assertTrue(sentFrames.size >= 2, "Expected at least 2 sent frames")
         val disconnectFrame = sentFrames[1]
         assertEquals(SoftDisconnect.TYPE_ID, disconnectFrame.messageTypeId)
-        val cbor = net.orandja.obor.codec.Cbor { ingnoreUnknownKeys = true }
-        val disconnectMsg = cbor.decodeFromByteArray(SoftDisconnect.serializer(), disconnectFrame.payload)
+        val disconnectMsg = testCbor.decodeFromByteArray(SoftDisconnect.serializer(), disconnectFrame.payload)
         assertEquals("shutting down", disconnectMsg.reason)
         assertEquals(false, disconnectMsg.reconnect)
         assertEquals(SessionState.CLOSED, session.state)
