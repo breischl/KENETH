@@ -2,9 +2,13 @@
 
 package dev.breischl.keneth.server
 
+import dev.breischl.keneth.core.messages.DemandParameters
 import dev.breischl.keneth.core.messages.Message
+import dev.breischl.keneth.core.messages.Ping
 import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.messages.SoftDisconnect
+import dev.breischl.keneth.core.messages.StorageParameters
+import dev.breischl.keneth.core.messages.SupplyParameters
 import dev.breischl.keneth.transport.MessageTransport
 import dev.breischl.keneth.transport.TransportListener
 import dev.breischl.keneth.transport.safeNotify
@@ -24,11 +28,17 @@ import kotlin.uuid.Uuid
  * user code must implement that by registering for listener callbacks on received messages, reacting to those messages,
  * and directing [EpNode] to send messages in response.
  *
+ * **Symmetric publishing:** The EP spec expects both sides of a connection to independently publish
+ * their relevant parameters (supply, demand, storage) during an energy transfer. This node handles
+ * publishing for the local side via [startPublishing]/[stopPublishing]. To implement the expected
+ * symmetry, callers should listen for incoming energy parameters via [NodeListener.onMessageReceived]
+ * and start their own publishing in response when appropriate.
+ *
  * Example:
  * ```kotlin
  * val node = EpNode(
  *     identity = SessionParameters(identity = "router-1", type = "router"),
- *     acceptor = TcpAcceptor(port = 56540),
+ *     acceptor = TcpInboundConnector(port = 56540),
  * )
  * node.addPeer(PeerConfig.Inbound(peerId = "charger-1"))
  * node.start()
@@ -40,19 +50,20 @@ import kotlin.uuid.Uuid
  * @param acceptor Strategy for accepting inbound connections, or null to disable listening.
  * @param transportListener Optional listener for transport-level events (frame/message I/O).
  * @param nodeListener Optional callback for session and peer lifecycle events.
- * @param transferReceiveTimeout Closes the session if no message is received within this
- *   window while an energy transfer is active. EP Spec section 5.1 specifies this must be no more than 200 ms.
- *   Defaults to 200 ms (EP minimum: 5 Hz).
+ * @param activeReceiveTimeout Closes the session if no message is received within this
+ *   window while energy parameters are being exchanged (either locally or remotely).
+ *   EP Spec section 5.1 specifies this must be no more than 200 ms. Defaults to 200 ms (EP minimum: 5 Hz).
+ *   Also determines the ping keepalive rate: pings are sent at `activeReceiveTimeout / 2`.
  * @param idleReceiveTimeout Closes the session if no message is received within this
- *   window when no transfer is active. Defaults to 5 s.
+ *   window when no energy publishing is active. Defaults to 5 s.
  * @param coroutineContext Additional coroutine context elements (e.g., a test dispatcher).
  */
 class EpNode(
     val identity: SessionParameters,
-    val acceptor: InboundAcceptor? = null,
+    val acceptor: InboundConnector? = null,
     val transportListener: TransportListener? = null,
     private val nodeListener: NodeListener? = null,
-    val transferReceiveTimeout: Duration = 200.milliseconds,
+    val activeReceiveTimeout: Duration = 200.milliseconds,
     val idleReceiveTimeout: Duration = 5.seconds,
     private val coroutineContext: CoroutineContext = EmptyCoroutineContext,
 ) : AutoCloseable {
@@ -64,11 +75,11 @@ class EpNode(
     // sessionScope drives all session coroutines.
     private val sessionScope = CoroutineScope(SupervisorJob() + coroutineContext)
 
-    // transferScope is cancelled first in close() so transfer coroutines run their
+    // publishingScope is cancelled first in close() so publishing coroutines run their
     // finally blocks (state update + cleanup) while sessions are still alive.
-    private val transferScope = CoroutineScope(SupervisorJob() + coroutineContext)
+    private val publishingScope = CoroutineScope(SupervisorJob() + coroutineContext)
 
-    private val transfers = mutableMapOf<String, EnergyTransfer>()
+    private val publishers = mutableMapOf<String, EnergyPublisher>()
 
     /** Read-only snapshot of all sessions currently tracked by this node. */
     internal val sessions: Map<String, DeviceSession> get() = _sessions.toMap()
@@ -111,8 +122,8 @@ class EpNode(
     }
 
     override fun close() {
-        // Cancel transfers first so their finally blocks run while sessions are still alive.
-        transferScope.cancel()
+        // Cancel publishers first so their finally blocks run while sessions are still alive.
+        publishingScope.cancel()
         acceptor?.close()
         _sessions.values.toList().forEach { closeSession(it) }
         sessionScope.cancel()
@@ -140,10 +151,10 @@ class EpNode(
      * Remove a configured peer.
      *
      * If the peer has an active session, it is disconnected first.
-     * Any active transfer for this peer is stopped.
+     * Any active publishing for this peer is stopped.
      */
     fun removePeer(peerId: String) {
-        stopTransfer(peerId)
+        stopPublishing(peerId)
         val peer = _peers.remove(peerId) ?: return
         val session = peer.session
         if (session != null) {
@@ -171,48 +182,57 @@ class EpNode(
         closeSession(session)
     }
 
-    // -- Transfer management --
+    // -- Parameter publishing --
 
     /**
      * Start publishing energy parameters to a connected peer.
      *
      * Launches a coroutine that calls [paramsProvider] on each tick and sends
-     * any non-null messages from the returned [TransferParams]. The caller
+     * any non-null messages from the returned [PublishingParams]. The caller
      * controls what is sent by mutating the state that [paramsProvider] captures.
-     * The transfer can be stopped with [stopTransfer].
+     * Publishing can be stopped with [stopPublishing].
      *
-     * Returns a [StartTransferResult] indicating success or the reason for failure.
+     * **EP spec note:** The spec (entf-ep-framing-transport §5.1) expects both sides of a
+     * connection to independently publish their relevant parameters during an energy transfer.
+     * Starting local publishing also activates the tight [activeReceiveTimeout], since the
+     * remote peer should also be publishing at >= 5 Hz. Callers should listen for incoming
+     * energy parameters via [NodeListener.onMessageReceived] and start their own publishing
+     * in response when appropriate.
      *
-     * Note: a [StartTransferResult.Success] means the transfer was launched, but the
+     * Returns a [StartPublishingResult] indicating success or the reason for failure.
+     *
+     * Note: a [StartPublishingResult.Success] means publishing was launched, but the
      * peer could disconnect between the state check and the first tick, in which case
-     * the transfer stops immediately.
+     * publishing stops immediately.
      *
      * @param peerId The peer to send parameters to.
      * @param paramsProvider Called each tick to obtain the parameters to send. Any field that is
-     *   non-null on the first tick must remain non-null for the lifetime of the transfer; see
-     *   [TransferParams] for details.
-     * @param tickRate How often to send parameters. Defaults to 100ms. EnergyNet spec requires no more than 200ms or remote side will cancel transfer.
+     *   non-null on the first tick must remain non-null for the lifetime of publishing; see
+     *   [PublishingParams] for details.
+     * @param tickRate How often to send parameters. Defaults to 100ms. EnergyNet spec requires
+     *   no more than 200ms or remote side will cancel the session.
      */
-    fun startTransfer(
+    fun startPublishing(
         peerId: String,
-        paramsProvider: () -> TransferParams,
+        paramsProvider: () -> PublishingParams,
         tickRate: Duration = 100.milliseconds
-    ): StartTransferResult {
+    ): StartPublishingResult {
         val peer = _peers[peerId]
-            ?: return StartTransferResult.PeerNotFound(peerId)
+            ?: return StartPublishingResult.PeerNotFound(peerId)
         if (!peer.isConnected) {
-            return StartTransferResult.PeerNotConnected(peerId)
+            return StartPublishingResult.PeerNotConnected(peerId)
         }
-        if (transfers.containsKey(peerId)) {
-            return StartTransferResult.TransferAlreadyActive(peerId)
+        if (publishers.containsKey(peerId)) {
+            return StartPublishingResult.PublishingAlreadyActive(peerId)
         }
 
-        val transfer = EnergyTransfer(peerId = peerId)
-        transfers[peerId] = transfer
-        // Signal the session watchdog to re-evaluate its timeout with the tighter transfer window.
+        val publisher = EnergyPublisher(peerId = peerId)
+        publishers[peerId] = publisher
+
+        // Notify the watchdog that the timeout may have changed (local publishing now active).
         peer.session?.receiveHeartbeat?.trySend(Unit)
 
-        transfer.job = transferScope.launch {
+        publisher.job = publishingScope.launch {
             try {
                 while (isActive) {
                     val session = peer.session
@@ -228,25 +248,25 @@ class EpNode(
             } catch (_: CancellationException) {
                 // Normal shutdown
             } catch (_: Exception) {
-                // Transport error — stop transfer
+                // Transport error — stop publishing
             } finally {
-                transfer._state = TransferState.STOPPED
-                transfers.remove(peerId)
+                publisher._state = PublishingState.STOPPED
+                publishers.remove(peerId)
             }
         }
 
-        return StartTransferResult.Success(transfer)
+        return StartPublishingResult.Success(publisher)
     }
 
     /**
-     * Stop an active transfer.
+     * Stop active publishing.
      *
-     * Cancels the publishing coroutine and marks the transfer as [TransferState.STOPPED].
-     * No-op if no transfer is active for this peer.
+     * Cancels the publishing coroutine and marks the publisher as [PublishingState.STOPPED].
+     * No-op if no publishing is active for this peer.
      */
-    fun stopTransfer(peerId: String) {
-        val transfer = transfers[peerId] ?: return
-        transfer.job?.cancel()
+    fun stopPublishing(peerId: String) {
+        val publisher = publishers[peerId] ?: return
+        publisher.job?.cancel()
     }
 
     // -- Private session machinery --
@@ -254,13 +274,51 @@ class EpNode(
     /** Thrown internally by the watchdog to trigger session close on receive timeout. */
     private class ReceiveTimeoutException : CancellationException("EP receive timeout")
 
-    /** Returns the receive timeout that applies to [session] given current transfer state. */
-    private fun activeReceiveTimeout(session: DeviceSession): Duration {
+    /**
+     * Returns the receive timeout that applies to [session].
+     *
+     * Uses the tight [activeReceiveTimeout] when either:
+     * - The remote peer is actively publishing energy parameters, or
+     * - The local node is publishing parameters to this peer.
+     *
+     * Per EP spec (entf-ep-framing-transport §5.1), when an energy transfer is ongoing,
+     * messages must arrive at >= 5 Hz (200ms). Both sides are expected to publish
+     * independently, so if either side is publishing, both should be.
+     */
+    private fun receiveTimeout(session: DeviceSession): Duration {
         val peer = peerForSession(session.id)
-        return if (peer != null && transfers.containsKey(peer.peerId)) {
-            transferReceiveTimeout
+        val localPublishingActive = peer != null && publishers.containsKey(peer.peerId)
+        return if (session.remotePublishingActive || localPublishingActive) {
+            activeReceiveTimeout
         } else {
             idleReceiveTimeout
+        }
+    }
+
+    /**
+     * Sends [Ping] keepalive messages at a fixed rate derived from [activeReceiveTimeout] / 2.
+     *
+     * Pings are skipped when local publishing is active, since the energy parameter
+     * messages serve as keepalive. This fixed-rate approach eliminates the dynamic
+     * rate-switching that previously caused race conditions at state transitions.
+     */
+    private suspend fun pingLoop(session: DeviceSession) {
+        val interval = activeReceiveTimeout / 2
+
+        while (session.state != SessionState.CLOSED) {
+            delay(interval)
+
+            if (session.state == SessionState.ACTIVE) {
+                val peer = peerForSession(session.id)
+                val localPublishingActive = peer != null && publishers.containsKey(peer.peerId)
+                if (!localPublishingActive) {
+                    try {
+                        session.send(Ping)
+                    } catch (_: Exception) {
+                        return // Transport broken
+                    }
+                }
+            }
         }
     }
 
@@ -308,16 +366,20 @@ class EpNode(
                 // Uses withTimeoutOrNull (backed by delay) so it works with virtual time in tests.
                 val watchdogJob = launch {
                     while (isActive) {
-                        val timeout = activeReceiveTimeout(session)
+                        val timeout = receiveTimeout(session)
                         val beat = withTimeoutOrNull(timeout) { session.receiveHeartbeat.receive() }
                         if (beat == null) {
                             // No message within the deadline — treat connection as lost.
                             runScope.cancel(ReceiveTimeoutException())
+                            nodeListener?.onSessionTimeout(session.snapshot(), timeout)
                             return@launch
                         }
                         // Heartbeat received; loop to start a fresh wait with the current timeout.
                     }
                 }
+
+                // Ping keepalive: send Ping at a fixed rate when no local publishing is active.
+                val pingJob = launch { pingLoop(session) }
 
                 session.transport.receive().collect { received ->
                     session.receiveHeartbeat.trySend(Unit)
@@ -331,8 +393,9 @@ class EpNode(
                         SessionState.DISCONNECTING, SessionState.CLOSED -> { /* ignore */ }
                     }
                 }
-                // Transport closed normally — stop the watchdog so the scope can complete.
+                // Transport closed normally — stop the watchdog and ping loop so the scope can complete.
                 watchdogJob.cancel()
+                pingJob.cancel()
             }
         } catch (e: CancellationException) {
             throw e
@@ -389,6 +452,18 @@ class EpNode(
 
     private fun handleActiveMessage(session: DeviceSession, message: Message) {
         val peer = peerForSession(session.id)
+
+        // Track whether the remote peer is actively publishing energy parameters so the watchdog
+        // can apply the tighter receive timeout when appropriate.
+        when (message) {
+            is SupplyParameters, is DemandParameters, is StorageParameters ->
+                session.remotePublishingActive = true
+
+            is Ping ->
+                session.remotePublishingActive = false
+            else -> {}
+        }
+
         if (message is SoftDisconnect) {
             session.state = SessionState.DISCONNECTING
             nodeListener.safeNotify { onSessionDisconnecting(session.snapshot(peerId = peer?.peerId), message) }
@@ -404,7 +479,7 @@ class EpNode(
         _sessions.remove(session.id)
         if (peer != null) {
             peer.session = null
-            stopTransfer(peer.peerId)
+            stopPublishing(peer.peerId)
             nodeListener.safeNotify { onPeerDisconnected(session.snapshot(peerId = peer.peerId)) }
         }
         nodeListener.safeNotify { onSessionClosed(session.snapshot(peerId = peer?.peerId)) }

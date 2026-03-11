@@ -11,7 +11,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.*
 import kotlin.time.Duration.Companion.seconds
 
-class TcpAcceptorTest {
+class TcpInboundConnectorTest {
 
     private val nodeParams = SessionParameters(identity = "test-server", type = "router")
     private val deviceParams = SessionParameters(identity = "test-device", type = "charger")
@@ -49,7 +49,7 @@ class TcpAcceptorTest {
     @Test
     fun `accepted connection completes handshake`() = runBlocking {
         val node = EpNode(identity = nodeParams).tracked()
-        val acceptor = TcpAcceptor(0).tracked()
+        val acceptor = TcpInboundConnector(0).tracked()
         acceptor.start(node)
 
         connectClient(acceptor.localPort!!)
@@ -65,7 +65,7 @@ class TcpAcceptorTest {
     @Test
     fun `multiple clients connect independently`() = runBlocking {
         val node = EpNode(identity = nodeParams).tracked()
-        val acceptor = TcpAcceptor(0).tracked()
+        val acceptor = TcpInboundConnector(0).tracked()
         acceptor.start(node)
 
         val device1 = SessionParameters(identity = "device-1", type = "charger")
@@ -87,7 +87,7 @@ class TcpAcceptorTest {
     fun `close stops accepting new connections`() = runBlocking {
         withTimeout(5.seconds) {
             val node = EpNode(identity = nodeParams).tracked()
-            val acceptor = TcpAcceptor(0).tracked()
+            val acceptor = TcpInboundConnector(0).tracked()
             acceptor.start(node)
             val port = acceptor.localPort!!
 
@@ -116,7 +116,7 @@ class TcpAcceptorTest {
         }
 
         val node = EpNode(identity = nodeParams, transportListener = listener).tracked()
-        val acceptor = TcpAcceptor(0, listener).tracked()
+        val acceptor = TcpInboundConnector(0, listener).tracked()
         acceptor.start(node)
 
         connectClient(acceptor.localPort!!)

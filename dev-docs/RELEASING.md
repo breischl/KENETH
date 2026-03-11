@@ -8,11 +8,10 @@ Releases are published to [Maven Central](https://central.sonatype.com/) via the
 ### Quick Release Via Git Tag
 
 1. Create and push a tag:
-   ```bash
-   git checkout main && git pull
-   git tag v1.2.3
-   git push origin v1.2.3
-   ```
+```shell
+./scripts/release.sh
+```
+   
 2. Wait for the release workflow to finish, then pull `main` to get the snapshot version bump commit.
 
 ### Manual Release Action

@@ -75,11 +75,11 @@ class InMemoryFrameTransportTest {
         b.close()
     }
 
-    // -- InMemoryPeerConnector tests --
+    // -- InMemoryOutboundConnector tests --
 
     @Test
     fun `connector local side sends frames received by remoteTransport`() = runTest {
-        val connector = InMemoryPeerConnector()
+        val connector = InMemoryOutboundConnector()
         val local = connector.connect(null)
 
         local.send(Ping)
@@ -93,7 +93,7 @@ class InMemoryFrameTransportTest {
 
     @Test
     fun `remoteTransport sends frames received by local side`() = runTest {
-        val connector = InMemoryPeerConnector()
+        val connector = InMemoryOutboundConnector()
         val local = connector.connect(null)
 
         MessageTransport(connector.remoteTransport).send(Ping)
@@ -107,7 +107,7 @@ class InMemoryFrameTransportTest {
 
     @Test
     fun `listener fires onFrameSending and onFrameSent on local send`() = runTest {
-        val connector = InMemoryPeerConnector()
+        val connector = InMemoryOutboundConnector()
 
         val sendingEvents = mutableListOf<Frame>()
         val sentEvents = mutableListOf<Frame>()
@@ -127,7 +127,7 @@ class InMemoryFrameTransportTest {
 
     @Test
     fun `listener fires onFrameReceived when local receive flow is consumed`() = runTest {
-        val connector = InMemoryPeerConnector()
+        val connector = InMemoryOutboundConnector()
 
         val receivedEvents = mutableListOf<ParseResult<Frame>>()
         val local = connector.connect(object : TransportListener {
@@ -146,7 +146,7 @@ class InMemoryFrameTransportTest {
 
     @Test
     fun `listener fires onDisconnected when local transport is closed`() = runTest {
-        val connector = InMemoryPeerConnector()
+        val connector = InMemoryOutboundConnector()
 
         var disconnectedFired = false
         val local = connector.connect(object : TransportListener {

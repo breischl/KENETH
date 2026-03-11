@@ -1,8 +1,9 @@
 package dev.breischl.keneth.server
 
+import dev.breischl.keneth.transport.FrameTransport
 import dev.breischl.keneth.transport.InMemoryFrameTransport
 import dev.breischl.keneth.transport.MessageTransport
-import dev.breischl.keneth.transport.PeerConnector
+import dev.breischl.keneth.transport.OutboundConnector
 import dev.breischl.keneth.transport.TransportListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -13,19 +14,19 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
 /**
- * An in-memory [InboundAcceptor] and [PeerConnector] combined into a single rendezvous object,
+ * An in-memory [InboundConnector] and [OutboundConnector] combined into a single rendezvous object,
  * for connecting two in-process [EpNode]s without network I/O.
  *
  * Pass the same instance as the acceptor for one node and the connector for another:
  *
  * ```kotlin
- * val acceptor = InMemoryInboundAcceptor()
+ * val connector = InMemoryBidirectionalConnector()
  *
- * val nodeA = EpNode(identity = identityA, acceptor = acceptor)
+ * val nodeA = EpNode(identity = identityA, acceptor = connector)
  * val nodeB = EpNode(identity = identityB)
  *
  * nodeA.addPeer(PeerConfig.Inbound("node-b"))
- * nodeB.addPeer(PeerConfig.Outbound("node-a", connector = acceptor))
+ * nodeB.addPeer(PeerConfig.Outbound("node-a", connector = connector))
  *
  * nodeA.start()
  * nodeB.start()
@@ -37,11 +38,11 @@ import kotlin.coroutines.EmptyCoroutineContext
  *
  * @param coroutineContext Additional coroutine context (e.g., a test dispatcher).
  */
-class InMemoryInboundAcceptor(
+class InMemoryBidirectionalConnector(
     coroutineContext: CoroutineContext = EmptyCoroutineContext,
-) : InboundAcceptor, PeerConnector {
+) : InboundConnector, OutboundConnector {
 
-    private val pendingConnections = Channel<MessageTransport>(Channel.UNLIMITED)
+    private val pendingConnections = Channel<FrameTransport>(Channel.UNLIMITED)
     private val scope = CoroutineScope(SupervisorJob() + coroutineContext)
 
     /**
@@ -53,7 +54,7 @@ class InMemoryInboundAcceptor(
     override suspend fun connect(listener: TransportListener?): MessageTransport {
         val (local, remote) = InMemoryFrameTransport.createPair()
         local.listener = listener
-        pendingConnections.send(MessageTransport(remote))
+        pendingConnections.send(remote)
         return MessageTransport(local, listener = listener)
     }
 
@@ -62,8 +63,8 @@ class InMemoryInboundAcceptor(
      */
     override fun start(node: EpNode) {
         scope.launch {
-            for (transport in pendingConnections) {
-                node.accept(transport)
+            for (frameTransport in pendingConnections) {
+                node.accept(MessageTransport(frameTransport, listener = node.transportListener))
             }
         }
     }

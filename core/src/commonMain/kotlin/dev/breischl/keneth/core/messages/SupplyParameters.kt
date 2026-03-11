@@ -32,7 +32,7 @@ import net.orandja.obor.data.CborObject
  * Defined in EnergyNet Protocol section 4.4.
  *
  * Trivia: The hex typeId for this message is 0xdcdcf00d - i.e. "DC DC food". Apparently a
- * joke from the spec designers, since this is supply Direct Current (DC) "food" to the peer node.
+ * joke from the spec designers, since this message concerns supplying Direct Current (DC) "food" to the peer node.
  *
  * @property voltageLimits The voltage range the charger can supply.
  * @property currentLimits The current range the charger can supply.

@@ -25,7 +25,7 @@ import net.orandja.obor.data.CborObject
  * and communicate its requirements and limits. Defined in EnergyNet Protocol section 4.5.
  *
  * Trivia: This message's hex type ID is 0xdcdcfeed - i.e. "DC DC Feed" - likely a joke from the spec designers,
- * since this message controls the flow of direct current (DC) electricity.
+ * since this message controls the "feed" of direct current (DC) electricity.
  *
  * @property voltage The requested voltage.
  * @property current The requested current.

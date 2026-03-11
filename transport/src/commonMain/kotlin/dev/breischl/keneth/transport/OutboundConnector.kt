@@ -6,7 +6,7 @@ package dev.breischl.keneth.transport
  * Implementations provide transport-specific connection logic (TCP, BLE, in-memory, etc.),
  * decoupling [dev.breischl.keneth.server.EpServer] from the underlying network layer.
  */
-interface PeerConnector {
+interface OutboundConnector {
     /**
      * Establish a connection and return a [MessageTransport] for communicating with the peer.
      *

@@ -7,6 +7,6 @@ package dev.breischl.keneth.server
  * Pass an instance via [EpNode.acceptor]; [EpNode] calls [start] when the node starts
  * and [close] when the node closes.
  */
-interface InboundAcceptor : AutoCloseable {
+interface InboundConnector : AutoCloseable {
     fun start(node: EpNode)
 }

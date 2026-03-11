@@ -136,8 +136,6 @@ All listener methods have default no-op implementations — override only what y
 `CborSnapshot` lazily computes `hex` and `prettyTree`, so there's no cost if unused.
 Exceptions thrown by listener methods are silently swallowed.
 
-See [EXAMPLE_OUTPUT.txt](EXAMPLE_OUTPUT.txt) for sample output from `PrintTransportListener`.
-
 ## Platform support
 
 `keneth-transport` is a Kotlin Multiplatform library targeting JVM, JS (IR), and linuxArm64.

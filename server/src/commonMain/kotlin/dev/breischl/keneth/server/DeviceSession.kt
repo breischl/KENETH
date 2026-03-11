@@ -28,10 +28,18 @@ class DeviceSession internal constructor(
         internal set
 
     /**
-     * Signalled on every received message (and on transfer-start) so the receive watchdog
-     * can reset its deadline without relying on wall-clock time.
+     * Signalled on every received message so the receive watchdog can reset its deadline
+     * without relying on wall-clock time.
      */
     internal val receiveHeartbeat = Channel<Unit>(Channel.CONFLATED)
+
+    /**
+     * True when the remote peer is actively publishing energy parameters
+     * (SupplyParameters, DemandParameters, StorageParameters). Used by the receive watchdog
+     * to apply the tighter active timeout. Set to false when the remote sends Ping,
+     * indicating it has returned to idle keepalive mode.
+     */
+    internal var remotePublishingActive: Boolean = false
 
     /** Called after each successful [send]. Set by [EpNode] to fire listener notifications. */
     internal var afterSend: ((Message) -> Unit)? = null

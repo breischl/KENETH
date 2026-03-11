@@ -3,8 +3,9 @@ package dev.breischl.keneth.server
 import dev.breischl.keneth.core.frames.Frame
 import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.parsing.ParseResult
+import dev.breischl.keneth.server.testutils.channelTransportWithMessages
 import dev.breischl.keneth.transport.FrameTransport
-import dev.breischl.keneth.transport.InMemoryPeerConnector
+import dev.breischl.keneth.transport.InMemoryOutboundConnector
 import dev.breischl.keneth.transport.MessageTransport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -44,7 +45,7 @@ class EpNodeTest {
 
     @Test
     fun `start and close lifecycle completes without error`() = runTest {
-        val acceptor = TcpAcceptor(0)
+        val acceptor = TcpInboundConnector(0)
         val node = EpNode(
             identity = serverIdentity,
             acceptor = acceptor,
@@ -175,7 +176,7 @@ class EpNodeTest {
     @Test
     fun `inbound connection accepted when listening`() = runTest {
         val listener = RecordingNodeListener()
-        val acceptor = TcpAcceptor(0)
+        val acceptor = TcpInboundConnector(0)
         val node = EpNode(
             identity = serverIdentity,
             acceptor = acceptor,
@@ -291,9 +292,9 @@ class EpNodeTest {
     // -- InMemoryFrameTransport integration --
 
     @Test
-    fun `outbound peer connects via InMemoryPeerConnector without network`() = runTest {
+    fun `outbound peer connects via InMemoryOutboundConnector without network`() = runTest {
         // Demonstrates that InMemoryFrameTransport can replace TCP for browser-based simulation.
-        // One node uses InMemoryPeerConnector as its outbound strategy; the remote side is
+        // One node uses InMemoryOutboundConnector as its outbound strategy; the remote side is
         // driven manually via the paired transport (simulating a device or another node).
         val nodeIdentity = SessionParameters(identity = "sim-node", type = "router")
         val peerIdentity = SessionParameters(identity = "sim-device", type = "charger")
@@ -305,7 +306,7 @@ class EpNodeTest {
             coroutineContext = UnconfinedTestDispatcher(),
         )
 
-        val connector = InMemoryPeerConnector()
+        val connector = InMemoryOutboundConnector()
 
         node.addPeer(
             PeerConfig.Outbound(

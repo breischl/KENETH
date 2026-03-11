@@ -1,18 +1,15 @@
 package dev.breischl.keneth.web.demo
 
-import dev.breischl.keneth.core.messages.DemandParameters
 import dev.breischl.keneth.core.messages.Message
-import dev.breischl.keneth.core.messages.Ping
 import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.messages.SoftDisconnect
-import dev.breischl.keneth.core.messages.StorageParameters
 import dev.breischl.keneth.core.messages.SupplyParameters
-import dev.breischl.keneth.core.messages.UnknownMessage
-import dev.breischl.keneth.server.EpNode
-import dev.breischl.keneth.server.InMemoryInboundAcceptor
-import dev.breischl.keneth.server.NodeListener
-import dev.breischl.keneth.server.PeerConfig
-import dev.breischl.keneth.server.SessionSnapshot
+import dev.breischl.keneth.core.values.Bounds
+import dev.breischl.keneth.core.values.Current
+import dev.breischl.keneth.core.values.Power
+import dev.breischl.keneth.core.values.Voltage
+import kotlin.time.Duration
+import dev.breischl.keneth.server.*
 import dev.breischl.keneth.transport.CborSnapshot
 import dev.breischl.keneth.transport.ReceivedMessage
 import dev.breischl.keneth.transport.TransportListener
@@ -27,10 +24,11 @@ import kotlin.js.Date
 
 private lateinit var nodeA: EpNode
 private lateinit var nodeB: EpNode
-private lateinit var acceptor: InMemoryInboundAcceptor
+private lateinit var acceptor: InMemoryBidirectionalConnector
 
 /**
  * Runs an in-browser network of [EpNode] connected to each other, with logging of the traffic between them.
+ * Each node gets its own log box so traffic is easy to distinguish.
  */
 fun main() {
     val container = document.getElementById("keneth-demo") as? HTMLElement ?: run {
@@ -38,9 +36,19 @@ fun main() {
         return
     }
 
-    // Build UI elements programmatically
-    val runBtn = (document.createElement("button") as HTMLButtonElement).apply {
-        textContent = "Run"
+    // --- Buttons ---
+    val connectBtn = (document.createElement("button") as HTMLButtonElement).apply {
+        textContent = "Connect"
+    }
+    val startPublishingBtn = (document.createElement("button") as HTMLButtonElement).apply {
+        textContent = "Start Transfer"
+        disabled = true
+        style.marginLeft = "8px"
+    }
+    val stopPublishingBtn = (document.createElement("button") as HTMLButtonElement).apply {
+        textContent = "Stop Transfer"
+        disabled = true
+        style.marginLeft = "8px"
     }
     val disconnectBtn = (document.createElement("button") as HTMLButtonElement).apply {
         textContent = "Disconnect"
@@ -49,110 +57,191 @@ fun main() {
     }
     val buttonRow = document.createElement("div").apply {
         (this as HTMLElement).style.marginBottom = "8px"
-        appendChild(runBtn)
+        appendChild(connectBtn)
+        appendChild(startPublishingBtn)
+        appendChild(stopPublishingBtn)
         appendChild(disconnectBtn)
     }
-    val logElement = (document.createElement("pre") as HTMLPreElement).apply {
-        style.apply {
-            height = "80%"
-            minHeight = "400px"
-            overflowY = "scroll"
-            border = "1px solid #ccc"
-            padding = "8px"
-            fontSize = "13px"
+
+    // --- Per-node log boxes ---
+    fun createLogBox(label: String): Pair<HTMLElement, HTMLPreElement> {
+        val pre = (document.createElement("pre") as HTMLPreElement).apply {
+            style.apply {
+                height = "400px"
+                overflowY = "scroll"
+                border = "1px solid #ccc"
+                padding = "8px"
+                fontSize = "13px"
+                margin = "0"
+            }
         }
+        val wrapper = (document.createElement("div") as HTMLElement).apply {
+            style.apply {
+                flex = "1 1 50%"
+                minWidth = "0"
+            }
+            val heading = document.createElement("h3").apply {
+                textContent = label
+                (this as HTMLElement).style.margin = "0 0 4px 0"
+            }
+            appendChild(heading)
+            appendChild(pre)
+        }
+        return wrapper to pre
+    }
+
+    val (nodeAWrapper, nodeALog) = createLogBox("battery-node")
+    val (nodeBWrapper, nodeBLog) = createLogBox("router-node")
+
+    val logRow = (document.createElement("div") as HTMLElement).apply {
+        style.display = "flex"
+        style.setProperty("gap", "8px")
+        appendChild(nodeAWrapper)
+        appendChild(nodeBWrapper)
     }
 
     container.appendChild(buttonRow)
-    container.appendChild(logElement)
+    container.appendChild(logRow)
 
-    fun log(label: String, msg: String) {
+    // --- Logging helpers ---
+    fun logTo(logElement: HTMLPreElement, msg: String) {
         val timestamp = Date().toISOString().substringAfter("T").substringBefore("Z")
-        logElement.textContent += "[$timestamp] [$label] $msg\n"
+        logElement.textContent += "[$timestamp] $msg\n"
         logElement.scrollTop = logElement.scrollHeight.toDouble()
     }
 
-    fun listenerFor(label: String) = object : NodeListener {
+    fun logBoth(msg: String) {
+        logTo(nodeALog, msg)
+        logTo(nodeBLog, msg)
+    }
+
+    fun listenerFor(logElement: HTMLPreElement) = object : NodeListener {
         override fun onSessionCreated(session: SessionSnapshot) {
-            log(label, "Session created: ${session.sessionId}")
+            logTo(logElement, "Session created: ${session.sessionId}")
         }
 
         override fun onSessionActive(session: SessionSnapshot) {
-            log(label, "Session active: ${session.sessionId}")
+            logTo(logElement, "Session active: sessionId=${session.sessionId} remoteIdentity=${session.remoteIdentity}")
         }
 
         override fun onPeerConnected(session: SessionSnapshot) {
-            log(label, "Peer connected: ${session.peerId}")
+            logTo(logElement, "Peer connected: ${session.peerId}")
         }
 
         override fun onSessionDisconnecting(session: SessionSnapshot, softDisconnect: SoftDisconnect?) {
-            log(label, "Disconnecting: ${session.sessionId}")
+            logTo(logElement, "Disconnecting: ${session.sessionId}")
         }
 
         override fun onPeerDisconnected(session: SessionSnapshot) {
-            log(label, "Peer disconnected: ${session.peerId}")
+            logTo(logElement, "Peer disconnected: ${session.peerId}")
+        }
+
+        override fun onSessionTimeout(session: SessionSnapshot, timeoutDuration: Duration) {
+            logTo(logElement, "Session timed out: ${session.sessionId} after ${timeoutDuration}")
         }
 
         override fun onSessionClosed(session: SessionSnapshot) {
-            log(label, "Session closed: ${session.sessionId}")
+            logTo(logElement, "Session closed: ${session.sessionId}")
         }
     }
 
-    fun transportListenerFor(label: String) = object : TransportListener {
+    fun transportListenerFor(logElement: HTMLPreElement) = object : TransportListener {
         override fun onMessageSending(message: Message, payloadCbor: CborSnapshot) {
-            log(label, "Sending: ${message}")
-            log(label, "  CBOR: ${payloadCbor.hex}")
+            logTo(logElement, "Sending: ${message}")
+            logTo(logElement, "  CBOR: ${payloadCbor.hex}")
         }
 
         override fun onMessageReceived(received: ReceivedMessage, payloadCbor: CborSnapshot?) {
             val message = received.message ?: return
-            log(label, "Received: ${message}")
-            payloadCbor?.let { log(label, "  CBOR: ${it.hex}") }
+            logTo(logElement, "Received: ${message}")
+            payloadCbor?.let { logTo(logElement, "  CBOR: ${it.hex}") }
         }
     }
 
-    runBtn.addEventListener("click", {
-        logElement.textContent = ""
-        log("demo", "Starting nodes...")
+    // --- Connect ---
+    connectBtn.addEventListener("click", {
+        nodeALog.textContent = ""
+        nodeBLog.textContent = ""
+        logBoth("Starting nodes...")
 
-        acceptor = InMemoryInboundAcceptor()
+        acceptor = InMemoryBidirectionalConnector()
 
+        val nodeAIdentity = "battery-node"
         nodeA = EpNode(
-            identity = SessionParameters(identity = "node-a", type = "charger"),
+            identity = SessionParameters(identity = nodeAIdentity, type = "battery"),
             acceptor = acceptor,
-            transportListener = transportListenerFor("node-a"),
-            nodeListener = listenerFor("node-a"),
+            transportListener = transportListenerFor(nodeALog),
+            nodeListener = listenerFor(nodeALog),
         )
 
+        val nodeBIdentity = "router-node"
         nodeB = EpNode(
-            identity = SessionParameters(identity = "node-b", type = "router"),
-            transportListener = transportListenerFor("node-b"),
-            nodeListener = listenerFor("node-b"),
+            identity = SessionParameters(identity = nodeBIdentity, type = "router"),
+            transportListener = transportListenerFor(nodeBLog),
+            nodeListener = listenerFor(nodeBLog),
         )
 
-        nodeA.addPeer(PeerConfig.Inbound("node-b"))
-        nodeB.addPeer(PeerConfig.Outbound("node-a", connector = acceptor))
+        nodeA.addPeer(PeerConfig.Inbound(nodeBIdentity))
+        nodeB.addPeer(PeerConfig.Outbound(nodeAIdentity, connector = acceptor))
 
         nodeA.start()
         nodeB.start()
 
-        runBtn.disabled = true
+        connectBtn.disabled = true
         disconnectBtn.disabled = false
-        log("demo", "Nodes started.")
+        startPublishingBtn.disabled = false
+        logBoth("Nodes started.")
     })
 
+    // --- Start Transfer ---
+    startPublishingBtn.addEventListener("click", {
+        val paramsProvider: () -> PublishingParams = {
+            PublishingParams(
+                supply = SupplyParameters(
+                    voltage = Voltage(48.0),
+                    voltageLimits = Bounds(min = Voltage(48.0), max = Voltage(52.0)),
+                    currentLimits = Bounds(min = Current(1.0), max = Current(100.0)),
+                    powerLimit = Power(watts = 10000.0)
+                )
+
+            )
+        }
+
+        val result = nodeA.startPublishing(
+            peerId = "router-node",
+            paramsProvider = paramsProvider,
+        )
+        logTo(nodeALog, "StartPublishing result: $result")
+
+        if (result is StartPublishingResult.Success) {
+            startPublishingBtn.disabled = true
+            stopPublishingBtn.disabled = false
+        }
+    })
+
+    // --- Stop Transfer ---
+    stopPublishingBtn.addEventListener("click", {
+        nodeA.stopPublishing("router-node")
+        logTo(nodeALog, "Publishing stopped.")
+        stopPublishingBtn.disabled = true
+        startPublishingBtn.disabled = false
+    })
+
+    // --- Disconnect ---
     disconnectBtn.addEventListener("click", {
-        log("demo", "Disconnecting nodes...")
+        logBoth("Disconnecting nodes...")
 
         @OptIn(DelicateCoroutinesApi::class)
         GlobalScope.launch {
             nodeA.close()
             nodeB.close()
             acceptor.close()
-            log("demo", "All nodes closed.")
+            logBoth("All nodes closed.")
 
-            runBtn.disabled = false
+            connectBtn.disabled = false
             disconnectBtn.disabled = true
+            startPublishingBtn.disabled = true
+            stopPublishingBtn.disabled = true
         }
     })
 }

@@ -1,6 +1,6 @@
 package dev.breischl.keneth.server
 
-import dev.breischl.keneth.transport.PeerConnector
+import dev.breischl.keneth.transport.OutboundConnector
 
 /**
  * Configuration for a known peer.
@@ -41,7 +41,7 @@ sealed class PeerConfig {
      */
     data class Outbound(
         override val peerId: String,
-        val connector: PeerConnector,
+        val connector: OutboundConnector,
         override val expectedIdentity: String? = null,
         val acceptInbound: Boolean = false,
     ) : PeerConfig()

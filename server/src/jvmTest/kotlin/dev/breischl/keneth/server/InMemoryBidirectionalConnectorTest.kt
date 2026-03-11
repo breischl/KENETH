@@ -7,7 +7,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class InMemoryInboundAcceptorTest {
+class InMemoryBidirectionalConnectorTest {
 
     private val identityA = SessionParameters(identity = "node-a", type = "router")
     private val identityB = SessionParameters(identity = "node-b", type = "router")
@@ -28,7 +28,7 @@ class InMemoryInboundAcceptorTest {
     @Test
     fun `connect queues transport and start drains it into node accept`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        val acceptor = InMemoryInboundAcceptor(dispatcher)
+        val acceptor = InMemoryBidirectionalConnector(dispatcher)
 
         val node = EpNode(
             identity = identityA,
@@ -50,7 +50,7 @@ class InMemoryInboundAcceptorTest {
     @Test
     fun `multiple connects are all accepted`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        val acceptor = InMemoryInboundAcceptor(dispatcher)
+        val acceptor = InMemoryBidirectionalConnector(dispatcher)
         val node = EpNode(identity = identityA, coroutineContext = dispatcher)
 
         acceptor.start(node)
@@ -66,7 +66,7 @@ class InMemoryInboundAcceptorTest {
     @Test
     fun `connect before start - transports are buffered and accepted on start`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        val acceptor = InMemoryInboundAcceptor(dispatcher)
+        val acceptor = InMemoryBidirectionalConnector(dispatcher)
         val node = EpNode(identity = identityA, coroutineContext = dispatcher)
 
         // connect first, start second
@@ -81,9 +81,9 @@ class InMemoryInboundAcceptorTest {
     }
 
     @Test
-    fun `two EpNodes wire together via InMemoryInboundAcceptor and both onPeerConnected fire`() = runTest {
+    fun `two EpNodes wire together via InMemoryBidirectionalConnector and both onPeerConnected fire`() = runTest {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
-        val acceptor = InMemoryInboundAcceptor(dispatcher)
+        val acceptor = InMemoryBidirectionalConnector(dispatcher)
 
         val listenerA = RecordingNodeListener()
         val nodeA = EpNode(

@@ -1,8 +1,9 @@
 package dev.breischl.keneth.server
 
 import dev.breischl.keneth.core.messages.SessionParameters
+import dev.breischl.keneth.server.testutils.channelTransportWithMessages
 import dev.breischl.keneth.transport.MessageTransport
-import dev.breischl.keneth.transport.tcp.TcpPeerConnector
+import dev.breischl.keneth.transport.tcp.TcpOutboundConnector
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -223,7 +224,7 @@ class PeerManagementTest {
         node.addPeer(
             PeerConfig.Outbound(
                 peerId = "remote-device",
-                connector = TcpPeerConnector("127.0.0.1", port),
+                connector = TcpOutboundConnector("127.0.0.1", port),
             )
         )
 

@@ -14,11 +14,11 @@ import java.net.SocketException
  * and passed to [EpNode.accept] to start the EP handshake.
  *
  * The server socket is not created until [start] is called, so constructing a
- * `TcpAcceptor` does not bind the port.
+ * `TcpInboundConnector` does not bind the port.
  *
  * Example:
  * ```kotlin
- * val node = EpNode(identity = nodeParams, acceptor = TcpAcceptor(port = 56540))
+ * val node = EpNode(identity = nodeParams, acceptor = TcpInboundConnector(port = 56540))
  * node.start() // acceptor.start(node) is called internally
  * // ... node is now listening for connections
  * node.close() // acceptor.close() is called internally
@@ -27,10 +27,10 @@ import java.net.SocketException
  * @param port The TCP port to listen on. Use 0 for an ephemeral port.
  * @param transportListener Optional listener forwarded to each [RawTcpServerTransport].
  */
-class TcpAcceptor(
+class TcpInboundConnector(
     private val port: Int,
     private val transportListener: TransportListener? = null,
-) : InboundAcceptor {
+) : InboundConnector {
 
     private var serverSocket: ServerSocket? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

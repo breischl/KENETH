@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.onEach
  * An in-memory [FrameTransport] backed by [Channel]s, suitable for testing and in-process simulation.
  *
  * Two transports are wired together via [createPair]: frames sent on one are received by the other.
- * For most use cases, prefer [InMemoryPeerConnector] which handles pairing automatically.
+ * For most use cases, prefer [InMemoryOutboundConnector] which handles pairing automatically.
  *
- * Set [listener] to observe frame-level events. [InMemoryPeerConnector] sets this automatically
- * when its [PeerConnector.connect] method is called.
+ * Set [listener] to observe frame-level events. [InMemoryOutboundConnector] sets this automatically
+ * when its [OutboundConnector.connect] method is called.
  */
 class InMemoryFrameTransport internal constructor(
     private val inbound: Channel<ParseResult<Frame>>,
@@ -57,7 +57,7 @@ class InMemoryFrameTransport internal constructor(
          * Creates a pair of [InMemoryFrameTransport]s wired together.
          *
          * Frames sent on the first transport are received by the second, and vice versa.
-         * For most use cases, prefer [InMemoryPeerConnector] which handles pairing automatically.
+         * For most use cases, prefer [InMemoryOutboundConnector] which handles pairing automatically.
          */
         fun createPair(): Pair<InMemoryFrameTransport, InMemoryFrameTransport> {
             val channelA = Channel<ParseResult<Frame>>(Channel.UNLIMITED)
@@ -68,26 +68,26 @@ class InMemoryFrameTransport internal constructor(
 }
 
 /**
- * A [PeerConnector] for in-process simulation without network I/O.
+ * A [OutboundConnector] for in-process simulation without network I/O.
  *
  * Creates a pair of [InMemoryFrameTransport]s internally. One side is used when
  * [connect] is called (the outbound/local side); the other is exposed as [remoteTransport].
  *
  * For wiring two [dev.breischl.keneth.server.EpNode]s together, prefer
- * `InMemoryInboundAcceptor` in the server module — it implements both `InboundAcceptor`
- * and `PeerConnector` and handles the accept loop automatically.
+ * `InMemoryBidirectionalConnector` in the server module — it implements both `InboundConnector`
+ * and `OutboundConnector` and handles the accept loop automatically.
  *
  * Use [remoteTransport] directly as a lower-level escape hatch for single-transport injection
  * (e.g. driving a simulated device from test code):
  *
  * ```kotlin
- * val connector = InMemoryPeerConnector()
+ * val connector = InMemoryOutboundConnector()
  * node.addPeer(PeerConfig.Outbound("sim-device", connector))
  * // Drive the remote side manually:
  * MessageTransport(connector.remoteTransport).send(deviceIdentity)
  * ```
  */
-class InMemoryPeerConnector : PeerConnector {
+class InMemoryOutboundConnector : OutboundConnector {
     private val channelA = Channel<ParseResult<Frame>>(Channel.UNLIMITED)
     private val channelB = Channel<ParseResult<Frame>>(Channel.UNLIMITED)
 

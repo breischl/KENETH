@@ -2,6 +2,7 @@ package dev.breischl.keneth.server
 
 import dev.breischl.keneth.core.messages.Message
 import dev.breischl.keneth.core.messages.SoftDisconnect
+import kotlin.time.Duration
 
 /**
  * Callback interface for observing [EpNode] events.
@@ -33,6 +34,12 @@ interface NodeListener {
 
     /** Session is disconnecting ([SoftDisconnect] received or sent). */
     fun onSessionDisconnecting(session: SessionSnapshot, softDisconnect: SoftDisconnect?) {}
+
+    /** Session has timed out. This fires after the session has already ended.
+     * The actual timeout depends on whether energy parameters were being exchanged or not.
+     * @param timeoutDuration Will be either [EpNode.idleReceiveTimeout] or [EpNode.activeReceiveTimeout], whichever timeout was breached.
+     */
+    fun onSessionTimeout(session: SessionSnapshot, timeoutDuration: Duration) {}
 
     /** Session is fully closed and removed from the node. */
     fun onSessionClosed(session: SessionSnapshot) {}

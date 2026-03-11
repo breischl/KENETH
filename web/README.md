@@ -12,25 +12,26 @@ transports.
 
 ### Current Demos
 
-- **Two-Node Demo** — Connects two `EpNode` instances via `InMemoryInboundAcceptor`, performs a session handshake,
+- **Two-Node Demo** — Connects two `EpNode` instances via `InMemoryBidirectionalConnector`, performs a session
+  handshake,
   and displays lifecycle events and message details in a scrollable log.
 
 ## Development
 
-Start the webpack dev server:
-
+Two achieve continuous hot-reload on web changes, you need to use two terminals. 
 ```bash
+# Terminal one
 ./gradlew :web:jsBrowserDevelopmentRun
+
+#Terminal two
+./gradlew :web:compileDevelopmentExecutableKotlinJs --continuous
 ```
 
-This serves the demo at `http://localhost:8080` with hot reload on code changes.
 
-Build the production bundle:
-
+To build the production bundle (e.g., to do a local deployment to the static Hugo site):
 ```bash
 ./gradlew :web:jsBrowserProductionWebpack
 ```
-
 Output: `web/build/kotlin-webpack/js/productionExecutable/web.js`
 
 ## Hugo Site Integration

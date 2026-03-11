@@ -5,18 +5,18 @@ and energy parameter publishing over TCP connections.
 
 ## Quickstart
 
-`EpNode` is the main entry point. It manages peer connections and energy transfers:
+`EpNode` is the main entry point. It manages peer connections and energy parameter publishing:
 
 ```kotlin
 import dev.breischl.keneth.core.messages.*
 import dev.breischl.keneth.core.values.*
 import dev.breischl.keneth.server.*
-import dev.breischl.keneth.server.TcpAcceptor
+import dev.breischl.keneth.server.TcpInboundConnector
 
 // Create and start a node
 val node = EpNode(
     identity = SessionParameters(identity = "router-1", type = "router"),
-    acceptor = TcpAcceptor(port = 56540),
+    acceptor = TcpInboundConnector(port = 56540),
     nodeListener = object : NodeListener {
         override fun onPeerConnected(session: SessionSnapshot) {
             println("Peer connected: ${session.peerId}")
@@ -36,45 +36,45 @@ node.addPeer(PeerConfig.Inbound(peerId = "charger-1"))
 // Start listening for connections
 node.start()
 
-// Start publishing transfer parameters to a connected peer
+// Start publishing energy parameters to a connected peer
 var supply = SupplyParameters(voltage = Voltage(400.0), current = Current(32.0))
-when (val result = node.startTransfer(
+when (val result = node.startPublishing(
     peerId = "charger-1",
     paramsProvider = {
-        TransferParams(
+        PublishingParams(
             supply = supply,
             demand = DemandParameters(voltage = Voltage(400.0)),
         )
     },
 )) {
-    is StartTransferResult.Success -> println("Transfer started")
-    is StartTransferResult.PeerNotFound -> println("Unknown peer: ${result.peerId}")
-    is StartTransferResult.PeerNotConnected -> println("Peer not connected: ${result.peerId}")
-    is StartTransferResult.TransferAlreadyActive -> println("Already transferring")
+    is StartPublishingResult.Success -> println("Publishing started")
+    is StartPublishingResult.PeerNotFound -> println("Unknown peer: ${result.peerId}")
+    is StartPublishingResult.PeerNotConnected -> println("Peer not connected: ${result.peerId}")
+    is StartPublishingResult.PublishingAlreadyActive -> println("Already publishing")
 }
 
 // Update parameters dynamically — paramsProvider is called each tick, so just update the captured state
 supply = SupplyParameters(voltage = Voltage(800.0), current = Current(16.0))
 
-// Stop transfer and clean up
-node.stopTransfer("charger-1")
+// Stop publishing and clean up
+node.stopPublishing("charger-1")
 node.close()
 ```
 
 ## Key Classes
 
-| Class                     | Description                                                                        |
-|---------------------------|------------------------------------------------------------------------------------|
-| `EpNode`                  | Main entry point. Accepts connections, enforces EP handshake, dispatches messages. |
-| `NodeListener`            | Callbacks for session and peer lifecycle events.                                   |
-| `SessionSnapshot`         | Immutable snapshot of a session's state at a point in time.                        |
-| `PeerConfig`              | Configuration for a known peer — `Inbound` or `Outbound`.                          |
-| `Peer`                    | Read-only view of a peer's current connection state.                               |
-| `EnergyTransfer`          | Read-only view of an active/stopped parameter transfer.                            |
-| `TransferParams`          | Supply, demand, and storage parameters to publish.                                 |
-| `InboundAcceptor`         | Interface for accepting inbound connections from other EP nodes                    |
-| `TcpAcceptor`             | Accepts TCP connections and feeds them into an `EpNode` (JVM-only).                |
-| `InMemoryInboundAcceptor` | In-process acceptor for testing without real sockets.                              |
+| Class                            | Description                                                                        |
+|----------------------------------|------------------------------------------------------------------------------------|
+| `EpNode`                         | Main entry point. Accepts connections, enforces EP handshake, dispatches messages. |
+| `NodeListener`                   | Callbacks for session and peer lifecycle events.                                   |
+| `SessionSnapshot`                | Immutable snapshot of a session's state at a point in time.                        |
+| `PeerConfig`                     | Configuration for a known peer — `Inbound` or `Outbound`.                          |
+| `Peer`                           | Read-only view of a peer's current connection state.                               |
+| `EnergyPublisher`                | Read-only view of an active/stopped parameter publisher.                           |
+| `PublishingParams`               | Supply, demand, and storage parameters to publish.                                 |
+| `InboundConnector`               | Interface for accepting inbound connections from other EP nodes                    |
+| `TcpInboundConnector`            | Accepts TCP connections and feeds them into an `EpNode` (JVM-only).                |
+| `InMemoryBidirectionalConnector` | In-process connector for wiring two `EpNode`s together without real sockets.       |
 
 ## Session Lifecycle
 
@@ -84,7 +84,7 @@ Sessions progress through these states:
 AWAITING_SESSION → ACTIVE → DISCONNECTING → CLOSED
 ```
 
-1. A transport is accepted (via `TcpAcceptor` or `EpNode.accept()` directly)
+1. A transport is accepted (via `TcpInboundConnector` or `EpNode.accept()` directly)
 2. The device sends `SessionParameters` (handshake)
 3. The node replies with its own `SessionParameters`
 4. Session becomes `ACTIVE` — messages can be exchanged
@@ -97,20 +97,25 @@ Peers are named endpoints configured before or after the node starts:
 | Config type                                 | Behavior                                                        |
 |---------------------------------------------|-----------------------------------------------------------------|
 | `PeerConfig.Inbound`                        | Wait for the peer to connect to us                              |
-| `PeerConfig.Outbound`                       | We initiate a connection to the peer via a `PeerConnector`      |
+| `PeerConfig.Outbound`                       | We initiate a connection to the peer via an `OutboundConnector` |
 | `PeerConfig.Outbound(acceptInbound = true)` | We connect outbound, but also accept inbound from this identity |
 
 Inbound connections are matched to configured peers by comparing the remote device's
 `SessionParameters.identity` against `PeerConfig.expectedIdentity` (defaults to `peerId`).
 
-## Energy Transfers
+## Energy Parameter Publishing
 
-`EpNode.startTransfer()` launches a coroutine that publishes parameter messages at a
-configurable tick rate (default 100ms). Each non-null field in `TransferParams` is sent
+`EpNode.startPublishing()` launches a coroutine that publishes parameter messages at a
+configurable tick rate (default 100ms). Each non-null field in `PublishingParams` is sent
 as a separate EP message per tick.
 
-- **`stopTransfer()`** — cancels publishing and marks the transfer `STOPPED`
-- Transfers auto-stop when the peer disconnects
+- **`stopPublishing()`** — cancels publishing and marks the publisher `STOPPED`
+- Publishing auto-stops when the peer disconnects
+
+**Symmetric publishing:** The EP spec expects both sides of a connection to independently
+publish their relevant parameters (supply, demand, storage) during an energy transfer.
+Callers should listen for incoming energy parameters via `NodeListener.onMessageReceived`
+and start their own publishing in response when appropriate.
 
 ## Platform support
 
@@ -118,12 +123,12 @@ as a separate EP message per tick.
 
 Server logic lives in `commonMain`. Platform-specific code provides the TCP accept loop:
 
-| Source set   | Contents                                              |
-|--------------|-------------------------------------------------------|
-| `commonMain` | `EpNode`, `NodeListener`, session/peer/transfer logic |
-| `jvmMain`    | `TcpAcceptor`                                         |
-| `jsMain`     | JS stubs                                              |
-| `nativeMain` | Native stubs                                          |
+| Source set   | Contents                                                |
+|--------------|---------------------------------------------------------|
+| `commonMain` | `EpNode`, `NodeListener`, session/peer/publishing logic |
+| `jvmMain`    | `TcpInboundConnector`                                   |
+| `jsMain`     | JS stubs                                                |
+| `nativeMain` | Native stubs                                            |
 
 ## Future Work
 

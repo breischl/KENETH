@@ -5,6 +5,8 @@ import dev.breischl.keneth.core.messages.SessionParameters
 import dev.breischl.keneth.core.messages.SupplyParameters
 import dev.breischl.keneth.core.values.Current
 import dev.breischl.keneth.core.values.Voltage
+import dev.breischl.keneth.server.testutils.ChannelFakeFrameTransport
+import dev.breischl.keneth.server.testutils.frameResultFor
 import dev.breischl.keneth.transport.MessageTransport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -14,7 +16,7 @@ import kotlin.test.*
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class EnergyTransferTest {
+class EnergyPublisherTest {
     private val serverIdentity = SessionParameters(identity = "test-node", type = "router")
     private val deviceIdentity = SessionParameters(identity = "test-device", type = "charger")
 
@@ -36,7 +38,7 @@ class EnergyTransferTest {
     }
 
     /**
-     * Creates an EpNode with a connected peer, ready for transfer testing.
+     * Creates an EpNode with a connected peer, ready for publishing tests.
      * Advances the scheduler to process the handshake.
      * Returns (node, fakeTransport, listener).
      */
@@ -72,10 +74,10 @@ class EnergyTransferTest {
         return Triple(node, fake, listener)
     }
 
-    /** Unwraps a [StartTransferResult.Success], failing the test on any other result. */
-    private fun StartTransferResult.requireSuccess(): EnergyTransfer {
+    /** Unwraps a [StartPublishingResult.Success], failing the test on any other result. */
+    private fun StartPublishingResult.requireSuccess(): EnergyPublisher {
         return when (this) {
-            is StartTransferResult.Success -> transfer
+            is StartPublishingResult.Success -> publisher
             else -> fail("Expected Success but got $this")
         }
     }
@@ -87,15 +89,15 @@ class EnergyTransferTest {
     // -- Tests --
 
     @Test
-    fun `start transfer sends parameters at tick rate`() = runTest {
+    fun `start publishing sends parameters at tick rate`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
         val supply = SupplyParameters(voltage = Voltage(400.0), current = Current(32.0))
         val demand = DemandParameters(voltage = Voltage(400.0))
-        val params = TransferParams(supply = supply, demand = demand)
+        val params = PublishingParams(supply = supply, demand = demand)
 
-        node.startTransfer("charger-1", { params }, tickRate = 100.milliseconds).requireSuccess()
+        node.startPublishing("charger-1", { params }, tickRate = 100.milliseconds).requireSuccess()
 
         // After first tick (immediate send before delay)
         advanceTimeBy(1)
@@ -117,8 +119,8 @@ class EnergyTransferTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
-        var params = TransferParams(supply = SupplyParameters(voltage = Voltage(400.0)))
-        node.startTransfer("charger-1", { params }, tickRate = 100.milliseconds).requireSuccess()
+        var params = PublishingParams(supply = SupplyParameters(voltage = Voltage(400.0)))
+        node.startPublishing("charger-1", { params }, tickRate = 100.milliseconds).requireSuccess()
 
         // First tick sends supply only
         advanceTimeBy(1)
@@ -126,7 +128,7 @@ class EnergyTransferTest {
         assertEquals(0, countSentMessagesByType(fake, DemandParameters.TYPE_ID))
 
         // Update the captured state — next tick should pick it up
-        params = TransferParams(
+        params = PublishingParams(
             supply = SupplyParameters(voltage = Voltage(800.0)),
             demand = DemandParameters(voltage = Voltage(800.0)),
         )
@@ -142,13 +144,13 @@ class EnergyTransferTest {
     }
 
     @Test
-    fun `stop transfer stops publishing`() = runTest {
+    fun `stop publishing stops sending`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
         val supply = SupplyParameters(voltage = Voltage(400.0))
-        val transfer = node.startTransfer(
-            "charger-1", { TransferParams(supply = supply) }, tickRate = 100.milliseconds
+        val publisher = node.startPublishing(
+            "charger-1", { PublishingParams(supply = supply) }, tickRate = 100.milliseconds
         ).requireSuccess()
 
         // First tick
@@ -156,35 +158,35 @@ class EnergyTransferTest {
         val countBefore = countSentMessagesByType(fake, SupplyParameters.TYPE_ID)
 
         // Stop
-        node.stopTransfer("charger-1")
+        node.stopPublishing("charger-1")
         advanceTimeBy(1) // let cancellation propagate
 
         // Advance more time — no new messages
         advanceTimeBy(500)
         val countAfter = countSentMessagesByType(fake, SupplyParameters.TYPE_ID)
         assertEquals(countBefore, countAfter, "No new messages should be sent after stop")
-        assertEquals(TransferState.STOPPED, transfer.state)
+        assertEquals(PublishingState.STOPPED, publisher.state)
 
         node.close()
     }
 
     @Test
-    fun `transfer sends on every tick`() = runTest {
+    fun `publishing sends on every tick`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
-        var params = TransferParams(supply = SupplyParameters(voltage = Voltage(200.0)))
-        node.startTransfer("charger-1", { params }, tickRate = 50.milliseconds).requireSuccess()
+        var params = PublishingParams(supply = SupplyParameters(voltage = Voltage(200.0)))
+        node.startPublishing("charger-1", { params }, tickRate = 50.milliseconds).requireSuccess()
 
         // First tick
         advanceTimeBy(1)
 
         // Advance through several ticks, updating captured state between them
-        params = TransferParams(supply = SupplyParameters(voltage = Voltage(400.0)))
+        params = PublishingParams(supply = SupplyParameters(voltage = Voltage(400.0)))
         advanceTimeBy(50)
-        params = TransferParams(supply = SupplyParameters(voltage = Voltage(600.0)))
+        params = PublishingParams(supply = SupplyParameters(voltage = Voltage(600.0)))
         advanceTimeBy(50)
-        params = TransferParams(supply = SupplyParameters(voltage = Voltage(800.0)))
+        params = PublishingParams(supply = SupplyParameters(voltage = Voltage(800.0)))
         advanceTimeBy(50)
 
         // All ticks should have sent supply messages
@@ -197,31 +199,31 @@ class EnergyTransferTest {
     }
 
     @Test
-    fun `peer disconnect stops transfer`() = runTest {
+    fun `peer disconnect stops publishing`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (node, fake, _) = createNodeWithConnectedPeer(dispatcher)
 
-        val transfer = node.startTransfer(
+        val publisher = node.startPublishing(
             "charger-1",
-            { TransferParams(supply = SupplyParameters(voltage = Voltage(400.0))) },
+            { PublishingParams(supply = SupplyParameters(voltage = Voltage(400.0))) },
             tickRate = 100.milliseconds,
         ).requireSuccess()
 
         // First tick
         advanceTimeBy(1)
-        assertEquals(TransferState.ACTIVE, transfer.state)
+        assertEquals(PublishingState.ACTIVE, publisher.state)
 
         // Close the transport — simulates peer disconnect
         fake.close()
-        advanceTimeBy(200) // let the transfer loop detect disconnection
+        advanceTimeBy(200) // let the publishing loop detect disconnection
 
-        assertEquals(TransferState.STOPPED, transfer.state)
+        assertEquals(PublishingState.STOPPED, publisher.state)
 
         node.close()
     }
 
     @Test
-    fun `start transfer on disconnected peer returns PeerNotConnected`() = runTest {
+    fun `start publishing on disconnected peer returns PeerNotConnected`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val listener = RecordingNodeListener()
         val node = EpNode(
@@ -232,38 +234,42 @@ class EnergyTransferTest {
 
         node.addPeer(PeerConfig.Inbound(peerId = "charger-1"))
 
-        val result = node.startTransfer("charger-1", { TransferParams(supply = SupplyParameters()) })
-        assertIs<StartTransferResult.PeerNotConnected>(result)
+        val result = node.startPublishing("charger-1", { PublishingParams(supply = SupplyParameters()) })
+        assertIs<StartPublishingResult.PeerNotConnected>(result)
         assertEquals("charger-1", result.peerId)
 
         node.close()
     }
 
     @Test
-    fun `start transfer on unknown peer returns PeerNotFound`() = runTest {
+    fun `start publishing on unknown peer returns PeerNotFound`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val node = EpNode(
             identity = serverIdentity,
             coroutineContext = dispatcher,
         )
 
-        val result = node.startTransfer("nonexistent", { TransferParams(supply = SupplyParameters()) })
-        assertIs<StartTransferResult.PeerNotFound>(result)
+        val result = node.startPublishing("nonexistent", { PublishingParams(supply = SupplyParameters()) })
+        assertIs<StartPublishingResult.PeerNotFound>(result)
         assertEquals("nonexistent", result.peerId)
 
         node.close()
     }
 
     @Test
-    fun `start transfer when already active returns TransferAlreadyActive`() = runTest {
+    fun `start publishing when already active returns PublishingAlreadyActive`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val (node, _, _) = createNodeWithConnectedPeer(dispatcher)
 
-        node.startTransfer("charger-1", { TransferParams(supply = SupplyParameters()) }, tickRate = 100.milliseconds)
+        node.startPublishing(
+            "charger-1",
+            { PublishingParams(supply = SupplyParameters()) },
+            tickRate = 100.milliseconds
+        )
             .requireSuccess()
 
-        val result = node.startTransfer("charger-1", { TransferParams(supply = SupplyParameters()) })
-        assertIs<StartTransferResult.TransferAlreadyActive>(result)
+        val result = node.startPublishing("charger-1", { PublishingParams(supply = SupplyParameters()) })
+        assertIs<StartPublishingResult.PublishingAlreadyActive>(result)
         assertEquals("charger-1", result.peerId)
 
         node.close()
